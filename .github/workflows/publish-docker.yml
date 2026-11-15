@@ -53,13 +53,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
-      # Die Build-Stufe läuft nur auf dem Build-Host (statische Dateien, plattformunabhängig),
-      # nur die nginx-Stufe entsteht je Architektur, deshalb braucht es kein QEMU.
+      # Nur amd64: alle k3s-Knoten sind amd64, wie in homelab-zuhause und homelab-raumfuerraum.
+      # Die Laufzeit-Stufe führt `apk upgrade` aus; für arm64 bräuchte das QEMU (setup-qemu-action).
       - name: Build and push Docker image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
