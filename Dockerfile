@@ -34,15 +34,20 @@ WORKDIR /src/upstream
 RUN cp /src/package-lock.json . \
     && npm ci --ignore-scripts --no-audit --no-fund
 
-# Upstream-Tests.
+# Abweichungen vom Upstream. `git apply` bricht bei jedem Konflikt ab, der Build
+# scheitert dann laut, statt eine Änderung still zu verlieren.
+COPY patches/ /src/patches/
+RUN git apply --whitespace=error-all /src/patches/*.patch
+
+# Upstream-Tests (inklusive der in den Patches angepassten).
 RUN npx vitest run
 
 # version.ts mit dem Commit-Zeitstempel des Upstreams (reproduzierbar, nicht `date`).
-RUN BUILD_DATE="$(git log -1 --format=%ct)" \
-    && echo "export const Version = { build_date: ${BUILD_DATE} };" > src/components/version.ts \
-    && npx webpack --config webpack.prod.js \
-    && printf '{ "build_date": %s, "upstream_commit": "%s", "version": "%s" }\n' \
-         "$BUILD_DATE" "$UPSTREAM_COMMIT" "$VERSION" > dist/version.json \
+RUN echo "export const Version = { build_date: $(git log -1 --format=%ct) };" > src/components/version.ts \
+    && npx webpack --config webpack.prod.js
+
+RUN printf '{ "build_date": %s, "upstream_commit": "%s", "version": "%s" }\n' \
+      "$(git log -1 --format=%ct)" "$UPSTREAM_COMMIT" "$VERSION" > dist/version.json \
     && cp LICENSE dist/LICENSE
 
 
