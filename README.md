@@ -20,6 +20,7 @@ das Lockfile und die Abweichungen. Das Image holt den Upstream beim Build am Pin
 | `known-hosts` | klassifizierte Liste aller Hosts in der gebauten Seite (**Hostliste**, FR-9) |
 | `tools/check-hosts.mjs` | Host-Prüfung im Build, mit Tests (`node --test tools/`) |
 | `nginx.conf` | Header (CSP, Referrer-Policy), Caching, `/healthz`, kein Zugriffslog |
+| `tests/` | `static.sh` (Prüfungen gegen ein laufendes Testimage, Aufruf im Kopf der Datei) und `browser/` (Browser-Tests, Netzwerkmitschnitt); gehören zu Schritt 5 des Monatsupdates |
 | `Dockerfile` | Build-Stufe (Node-LTS) und Laufzeit-Stufe (nginx-unprivileged), beide per Digest gepinnt |
 | `.github/workflows/` | `build-docker.yml` (PR und Push, ohne Veröffentlichung, mit Rauchtest), `publish-docker.yml` (ghcr, nur amd64), `renovate.yml` (monatlich) |
 | `renovate.json` | Renovate-Konfiguration (Upstream-Pin, Basis-Images, Actions) |
