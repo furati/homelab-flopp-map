@@ -119,7 +119,9 @@ Basis-Images und Actions kommen im selben Lauf als eigene PRs, ohne Automerge.
    cp package-lock.json <dieses Repo>/package-lock.json
    ```
    Den Lockfile-Diff prüfen: nur erwartete Änderungen, keine neuen Install-Skripte.
-4. Upstream-Tests und Build laufen grün (gehören zum Docker-Build).
+4. Upstream-Tests und Build laufen grün (gehören zum Docker-Build). Der Build-Workflow prüft außerdem,
+   dass der Pin auf `master` des Upstreams liegt (GitHub liefert über `flopp/map.git` auch Commits aus Forks).
+   Bei einem von Hand eingetragenen Pin lokal: `git merge-base --is-ancestor <SHA> origin/master`.
 5. Der Tester prüft AC-3 bis AC-6 per HAR gegen das lokal gestartete Image und trägt das Ergebnis
    in den PR ein. Ein neuer externer Host oder eine Lockerung der CSP blockiert den Merge, bis Ralf
    entschieden hat.

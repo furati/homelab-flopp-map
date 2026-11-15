@@ -28,6 +28,17 @@ jobs:
           printf '%s' "$commit" | grep -Eq '^[0-9a-f]{40}$'
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
+      # GitHub liefert über flopp/map.git auch Commits aus Forks des Netzwerks;
+      # der Pin muss deshalb auf master des Upstreams liegen.
+      - name: Pin liegt auf master des Upstreams
+        env:
+          PIN: ${{ steps.pin.outputs.commit }}
+        run: |
+          git init -q upstream-check
+          git -C upstream-check remote add origin https://github.com/flopp/map.git
+          git -C upstream-check fetch -q --no-tags --filter=tree:0 origin master "$PIN"
+          git -C upstream-check merge-base --is-ancestor "$PIN" origin/master
+
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Image bauen
