@@ -30,7 +30,20 @@ Das Dockerfile holt den Upstream am Pin (`git` prüft den SHA), wendet die Patch
 installiert die Abhängigkeiten per `npm ci --ignore-scripts` aus dem Lockfile, führt die
 Upstream-Tests aus, baut mit webpack und prüft die Hosts. `make build` wird **nicht**
 benutzt, weil es zur Bauzeit `cloud.umami.is/script.js` nachlädt. `build_date` kommt aus
-dem Commit-Zeitstempel des Upstreams, der Build ist damit reproduzierbar.
+dem Commit-Zeitstempel des Upstreams.
+
+**Reproduzierbarkeit:**
+
+- `dist/` ist reproduzierbar: Upstream-Pin, Lockfile, `--ignore-scripts` und feste Basis-Digests
+  legen den App-Code fest.
+- Die Laufzeit-Schicht ist es nicht bitgleich: Das Dockerfile führt `apk upgrade` aus, damit bekannte
+  CVEs im Alpine-Unterbau des nginx-Images nicht im Image bleiben. Sie kommt vom Paketstand zum
+  Bauzeitpunkt. Ein erneuter Lauf für denselben Tag ergibt deshalb einen anderen Image-Digest.
+- Reproduzierbar ist das **Deployment**: homelab-gitops pinnt das Image per Digest
+  (`:<semver>@sha256:…`), ein neu gebauter Tag schlägt nicht still durch. Den Publish-Lauf eines
+  Tags deshalb nicht wiederholen, besonders nicht für Rollback-Ziele.
+- Sicherheitsfixes der Alpine-Pakete kommen nur mit einem neuen Build, bei Bedarf als PATCH-Release
+  ohne Codeänderung.
 
 ```bash
 docker build \
