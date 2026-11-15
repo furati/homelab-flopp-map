@@ -65,6 +65,11 @@ RUN printf '{ "build_date": %s, "upstream_commit": "%s", "version": "%s" }\n' \
 
 FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
 
+# Sicherheitsupdates der Alpine-Pakete: Der Digest-Pin des Basis-Images hinkt den
+# Fixes hinterher (brotli, curl, expat, libxslt, musl, zlib). Zurück auf 101 am Ende.
+USER root
+RUN apk upgrade --no-cache
+
 ARG UPSTREAM_COMMIT
 ARG VERSION=dev
 
