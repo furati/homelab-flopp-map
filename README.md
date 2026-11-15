@@ -52,6 +52,7 @@ Das Cluster-Deployment liegt in **homelab-gitops** (`manifests/flopp-map/`, `app
 | `0001-no-analytics` | Das Script-Tag `u.js` (Umami) fehlt in `index.html`. | Kein Analytics, FR-8, AC-6 |
 | `0002-search-coordinates-only` | Das Suchfeld versteht nur Koordinaten. Der Nominatim-Rückfall fehlt, stattdessen erscheint ein Hinweis (de, en, fr). | Suchtext geht nicht an Dritte, FR-10 |
 | `0003-layers` | Nur OpenStreetMap, OpenTopoMap und die BfN-Schutzgebiets-Ebene. Stamen, Humanitarian, ArcGIS (auch mit terrestris-Overlay) und das Mapterhorn-Hillshading sind samt Code entfernt. `t=`-Werte dieser Ebenen (URL, localStorage, JSON-Import) fallen auf OpenStreetMap zurück. Zwei Upstream-Tests sind angepasst, `tests/map_type.test.ts` kommt dazu. | Weniger Drittserver, FR-11 |
+| `0004-no-analytics-remnants` | Die wirkungslosen Umami-Reste (`window.umami?.track`, Hash-Schalter `#enable-/#disable-umami`, Typdeklaration) sind entfernt. | Kein toter Analytics-Code, FR-8, AC-6 |
 
 Weitere Abweichungen ohne Patch:
 
@@ -62,9 +63,8 @@ Weitere Abweichungen ohne Patch:
 - `nginx.conf` setzt die CSP, die Referrer-Policy `strict-origin-when-cross-origin` und
   `X-Content-Type-Options`. Das nginx-Zugriffslog ist aus.
 
-**Bekannte Reste** im ausgelieferten `dist/`: Der Treffer für `umami` besteht nur aus den
-wirkungslosen Aufrufen `window.umami?.track(...)` (ohne `u.js` gibt es kein `window.umami`)
-und dem lokalen Schalter `#disable-umami` in `main.ts`. Es wird kein Skript geladen.
+**Keine Umami-Reste:** `0004-no-analytics-remnants` entfernt die `window.umami?.track(...)`-Aufrufe,
+die Schalter `#enable-/#disable-umami` und die Typdeklaration. Im `dist/` gibt es keinen Treffer für `umami`.
 `mapterhorn` kommt nur noch in Übersetzungstexten und im News-Text vor.
 
 ## Hostliste (Datenschutz)
