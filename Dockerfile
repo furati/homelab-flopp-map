@@ -14,6 +14,8 @@ FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f2
 ARG UPSTREAM_COMMIT
 ARG VERSION=dev
 
+# Nur Build-Stufe; die Paketversion wandert mit dem Basis-Image-Digest.
+# hadolint ignore=DL3018
 RUN apk add --no-cache git
 
 WORKDIR /src
@@ -48,7 +50,9 @@ COPY tools/ /src/tools/
 COPY known-hosts nginx.conf /src/
 RUN node --test /src/tools/check-hosts.test.mjs
 
-# Upstream-Tests (inklusive der in den Patches angepassten).
+# Upstream-Tests (inklusive der in den Patches angepassten). Eigener Schritt, damit
+# das Build-Log zeigt, welche Prüfung scheitert.
+# hadolint ignore=DL3059
 RUN npx --no-install vitest run
 
 # version.ts mit dem Commit-Zeitstempel des Upstreams (reproduzierbar, nicht `date`).
@@ -67,7 +71,7 @@ FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb
 
 # Sicherheitsupdates der Alpine-Pakete: Der Digest-Pin des Basis-Images hinkt den
 # Fixes hinterher (brotli, curl, expat, libxslt, musl, zlib). Zurück auf 101 am Ende.
-USER root
+USER 0
 RUN apk upgrade --no-cache
 
 ARG UPSTREAM_COMMIT
@@ -89,4 +93,4 @@ USER 101
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+    CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
