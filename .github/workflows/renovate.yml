@@ -15,14 +15,23 @@ concurrency:
   group: renovate
   cancel-in-progress: false
 
-# Renovate arbeitet mit dem PAT (RENOVATE_TOKEN) und liest die Konfiguration über die
-# API; der GITHUB_TOKEN braucht keine Rechte, ein Checkout entfällt.
-permissions: {}
+# Renovate arbeitet mit dem PAT (RENOVATE_TOKEN). Der GITHUB_TOKEN dieses Jobs darf nur
+# lesen (contents: read) und verfällt mit dem Job; der Checkout legt ihn in .git/config ab,
+# das ist in einem öffentlichen Repo vertretbar. Der Checkout steht hier trotzdem, ohne
+# persist-credentials: false, weil er Flottenstandard ist (alle furati-Repos mit dieser
+# Action) und homelab-k3s am 22.10. einen Redirect-Fehler hatte, dessen Ursache (Checkout oder
+# Action statt npx) nie getrennt gemessen wurde. In Build und Publish bleibt
+# persist-credentials: false.
+permissions:
+  contents: read
 
 jobs:
   renovate:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       # Die OFFIZIELLE Action statt `npx renovate`, einheitlich in allen furati-Repos
       # (Begründung siehe homelab-zuhause, .github/workflows/renovate.yml).
       - name: Renovate
