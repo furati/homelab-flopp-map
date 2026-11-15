@@ -3,7 +3,7 @@ import {test} from "node:test";
 
 import {compare, cspImgHosts, expandTileHost, extractHosts, parseKnownHosts} from "./check-hosts.mjs";
 
-const NGINX = `add_header Content-Security-Policy "default-src 'self'; script-src 'self'; img-src 'self' data: https://a.tile.example.org https://b.tile.example.org https://c.tile.example.org https://wms.example.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;`;
+const NGINX = `add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://a.tile.example.org https://b.tile.example.org https://c.tile.example.org https://wms.example.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;`;
 const KNOWN = parseKnownHosts(`
 # Kommentar
 {s}.tile.example.org | tile | Kacheln | Ausschnitt
@@ -85,5 +85,19 @@ test("compare: fehlende oder gelockerte Direktiven werden gemeldet", () => {
         const problems = compare(FOUND, KNOWN, NGINX.replace(directive, replacement));
         assert.equal(problems.length, 1, directive);
         assert.match(problems[0], /CSP/);
+    }
+});
+
+test("compare: unbekannte Direktive, gelockertes style-src und zweiter CSP-Header werden gemeldet", () => {
+    for (const [nginx, pattern] of [
+        [NGINX.replace("connect-src", "font-src https://x.example.org; connect-src"), /unbekannte Direktive font-src/],
+        [NGINX.replace("connect-src", "frame-src *; connect-src"), /unbekannte Direktive frame-src/],
+        [NGINX.replace("'self' 'unsafe-inline'", "'self' 'unsafe-inline' https://x.example.org"), /style-src muss genau/],
+        [NGINX.replace("style-src 'self' 'unsafe-inline'; ", ""), /ohne style-src/],
+        [`${NGINX}\n${NGINX}`, /mehrfach/],
+    ]) {
+        const problems = compare(FOUND, KNOWN, nginx);
+        assert.equal(problems.length, 1, pattern.toString());
+        assert.match(problems[0], pattern);
     }
 });

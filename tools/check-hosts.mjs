@@ -4,7 +4,8 @@
 // vergleicht sie mit `known-hosts`. Ein neuer oder entfallener Host lässt den
 // Build scheitern, bis die Liste im selben PR angepasst ist. Zusätzlich müssen
 // die Hosts der Klasse `tile` exakt denen in `img-src` der CSP in nginx.conf
-// entsprechen; `img-src` darf außer 'self', data:, blob: und diesen Hosts nichts
+// entsprechen; `style-src` muss genau 'self' 'unsafe-inline' sein, unbekannte Direktiven
+// und ein zweiter CSP-Header sind Fehler; `img-src` darf außer 'self', data:, blob: und diesen Hosts nichts
 // enthalten (kein `*`, kein `https:`). `default-src`, `script-src`, `connect-src`,
 // `base-uri`, `form-action` und `object-src`/`frame-ancestors` müssen die Sollwerte haben.
 //
@@ -75,7 +76,15 @@ const CSP_EXACT = {
     "form-action": "'self'",
     "frame-ancestors": "'none'",
 };
+// style-src braucht 'unsafe-inline' (siehe README); sonst darf nichts dazukommen.
+const STYLE_SRC = "'self' 'unsafe-inline'";
+const KNOWN_DIRECTIVES = new Set([...Object.keys(CSP_EXACT), "img-src", "style-src"]);
 const IMG_KEYWORDS = new Set(["'self'", "data:", "blob:"]);
+
+const cspDirectiveNames = (nginxConf) => {
+    const csp = nginxConf.match(/add_header Content-Security-Policy "([^"]*)"/);
+    return csp === null ? [] : csp[1].split(";").map((part) => part.trim().split(/\s+/)[0]).filter((name) => name !== "");
+};
 
 export const cspImgHosts = (nginxConf) =>
     (cspDirective(nginxConf, "img-src") ?? [])
@@ -109,6 +118,20 @@ export const compare = (found, known, nginxConf) => {
         } else if (actual.join(" ") !== expected) {
             problems.push(`CSP ${name} muss genau ${expected} sein`);
         }
+    }
+    const style = cspDirective(nginxConf, "style-src");
+    if (style === undefined) {
+        problems.push(`CSP ohne style-src (erwartet: ${STYLE_SRC})`);
+    } else if (style.join(" ") !== STYLE_SRC) {
+        problems.push(`CSP style-src muss genau ${STYLE_SRC} sein`);
+    }
+    for (const name of cspDirectiveNames(nginxConf)) {
+        if (!KNOWN_DIRECTIVES.has(name)) {
+            problems.push(`CSP enthält unbekannte Direktive ${name} (neue Direktiven erst hier und in der README begründen)`);
+        }
+    }
+    if ((nginxConf.match(/add_header\s+Content-Security-Policy\b/g) ?? []).length > 1) {
+        problems.push("nginx.conf setzt Content-Security-Policy mehrfach (nur der erste Eintrag wird geprüft)");
     }
     const img = cspDirective(nginxConf, "img-src");
     if (img === undefined) {
