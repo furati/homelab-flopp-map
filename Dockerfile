@@ -43,12 +43,20 @@ COPY overrides/ src/
 COPY patches/ /src/patches/
 RUN git apply --whitespace=error-all /src/patches/*.patch
 
+# Host-Prüfung: Hilfsskript, Hostliste und CSP (nginx.conf).
+COPY tools/ /src/tools/
+COPY known-hosts nginx.conf /src/
+RUN node --test /src/tools/check-hosts.test.mjs
+
 # Upstream-Tests (inklusive der in den Patches angepassten).
 RUN npx vitest run
 
 # version.ts mit dem Commit-Zeitstempel des Upstreams (reproduzierbar, nicht `date`).
 RUN echo "export const Version = { build_date: $(git log -1 --format=%ct) };" > src/components/version.ts \
     && npx webpack --config webpack.prod.js
+
+# Jeder neue oder entfallene Host in dist/ lässt den Build scheitern.
+RUN node /src/tools/check-hosts.mjs dist /src/known-hosts /src/nginx.conf
 
 RUN printf '{ "build_date": %s, "upstream_commit": "%s", "version": "%s" }\n' \
       "$(git log -1 --format=%ct)" "$UPSTREAM_COMMIT" "$VERSION" > dist/version.json \
