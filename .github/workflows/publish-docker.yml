@@ -24,7 +24,10 @@ jobs:
 
       - name: Upstream-Commit aus der Pin-Datei lesen
         id: pin
-        run: echo "commit=$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)" >> "$GITHUB_OUTPUT"
+        run: |
+          commit="$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)"
+          printf '%s' "$commit" | grep -Eq '^[0-9a-f]{40}$'
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
       - name: Log in to the Container registry
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
