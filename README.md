@@ -144,6 +144,24 @@ Ohne beide Merges ändert sich die laufende Instanz nicht.
 
 Voraussetzung für Renovate ist das Repo-Secret `RENOVATE_TOKEN` (klassischer PAT mit Scope `repo`).
 
+## GitHub-Einstellungen
+
+Gesetzt am 15.11.2026 (per `gh api` geprüft), Voraussetzung für Merge und Veröffentlichung:
+
+- **Actions:** nur GitHub-eigene Actions sowie `docker/build-push-action`, `docker/login-action`,
+  `docker/metadata-action`, `docker/setup-buildx-action` und `renovatebot/github-action`.
+  SHA-Pinning ist Pflicht (`sha_pinning_required`). **Wird eine neue Action nötig, muss die
+  Allowlist (Settings, Actions, General) vorher ergänzt werden**, sonst scheitert der Lauf.
+- **Fork-Pull-Requests:** Freigabe für alle externen Beitragenden nötig.
+  Dazu die Regeln: kein `pull_request_target`, kein `workflow_run` mit Secrets, keine self-hosted Runner.
+- **Ruleset `main-schutz`** (Standardbranch): PR-Pflicht, Status-Check `build` muss grün sein,
+  kein Force-Push, kein Löschen, kein Bypass.
+- **Ruleset `release-tags`** (`v*`): Anlegen, Ändern und Löschen nur durch Repo-Admin.
+- **ghcr-Paket** nach der ersten Veröffentlichung auf öffentlich stellen (siehe oben).
+
+Renovate läuft nur monatlich; ein Haken im Dependency Dashboard wirkt daher erst beim nächsten Lauf
+oder nach einem Start per `workflow_dispatch`.
+
 ## Lizenz
 
 Flopp's Map ist von Florian Pigorsch und steht unter der MIT-Lizenz
