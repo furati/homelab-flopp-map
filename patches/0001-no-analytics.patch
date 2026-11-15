@@ -1,0 +1,12 @@
+diff --git a/src/index.html b/src/index.html
+index c1c542a..ea21461 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -9,7 +9,6 @@
+         <link rel="icon" href="assets/favicon.png" type="image/png" />
+         <link rel="shortcut icon" href="assets/favicon.png" type="image/png" />
+         <link rel="me" href="https://freiburg.social/@flopp">
+-        <script defer src="u.js" data-website-id="98626eea-2a08-47bd-94c5-1351033e3a3d"></script>
+     </head>
+ 
+     <body style="display:none">

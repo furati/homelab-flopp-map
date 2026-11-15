@@ -1,0 +1,67 @@
+name: Build
+
+# Baut das Image bei jedem PR und Push, ohne es zu veröffentlichen. Der Build
+# enthält Patches, Upstream-Tests und die Host-Prüfung; scheitert einer davon,
+# ist der PR rot. Danach läuft ein kurzer Rauchtest gegen den Container.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Upstream-Commit aus der Pin-Datei lesen
+        id: pin
+        run: |
+          commit="$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)"
+          printf '%s' "$commit" | grep -Eq '^[0-9a-f]{40}$'
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      # GitHub liefert über flopp/map.git auch Commits aus Forks des Netzwerks;
+      # der Pin muss deshalb auf master des Upstreams liegen.
+      - name: Pin liegt auf master des Upstreams
+        env:
+          PIN: ${{ steps.pin.outputs.commit }}
+        run: |
+          git init -q upstream-check
+          git -C upstream-check remote add origin https://github.com/flopp/map.git
+          git -C upstream-check fetch -q --no-tags --filter=tree:0 origin master "$PIN"
+          git -C upstream-check merge-base --is-ancestor "$PIN" origin/master
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Image bauen
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          tags: homelab-flopp-map:ci
+          build-args: |
+            UPSTREAM_COMMIT=${{ steps.pin.outputs.commit }}
+            VERSION=ci
+
+      - name: Rauchtest
+        env:
+          PIN: ${{ steps.pin.outputs.commit }}
+        run: |
+          docker run -d --name map --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -p 8080:8080 homelab-flopp-map:ci
+          for _ in $(seq 1 20); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fs http://127.0.0.1:8080/version.json | tee version.json
+          grep -q "\"upstream_commit\": \"$PIN\"" version.json
+          curl -fsI http://127.0.0.1:8080/ | grep -qi '^content-security-policy:'
+          curl -fsI http://127.0.0.1:8080/ | grep -qi '^referrer-policy: strict-origin-when-cross-origin'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/u.js)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:8080/assets/?c=48.1/7.8')" = 404
+          docker rm -f map

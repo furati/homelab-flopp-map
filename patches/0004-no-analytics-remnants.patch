@@ -1,0 +1,53 @@
+diff --git a/src/components/app.ts b/src/components/app.ts
+index 8fe9cca..a3be7db 100644
+--- a/src/components/app.ts
++++ b/src/components/app.ts
+@@ -58,15 +58,6 @@ export class App {
+ 
+         this.sidebar = new Sidebar(this);
+ 
+-        // track the URL for debugging purposes
+-        if (url_state !== null) {
+-            window.umami?.track("url_open", {url: window.location.href});
+-        }
+-        // track big maps for debugging purposes
+-        if (this.map_state.markers.length >= 10) {
+-            window.umami?.track("big_map", {url: this.map_state.create_link()});
+-        }
+-
+         if (url_state !== null && this.map_state.has_markers_or_lines()) {
+             const overwrite_dialog = new OverwriteProtectionDialog(this);
+             overwrite_dialog.show(
+diff --git a/src/main.ts b/src/main.ts
+index 7c46e7d..20f4efb 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -5,15 +5,6 @@ const main = (): void => {
+     // Remove "display:none" from body
+     document.body.style.display = "block";
+     (window as any).app = new App("map-container-leaflet");
+-
+-    if (location.hash === "#disable-umami") {
+-        localStorage.setItem("umami.disabled", "true");
+-        alert("Umami is now DISABLED in this browser.");
+-    }
+-    if (location.hash === "#enable-umami") {
+-        localStorage.removeItem("umami.disabled");
+-        alert("Umami is now ENABLED in this browser.");
+-    }
+ };
+ 
+ console.log(document.readyState);
+diff --git a/src/types/global.d.ts b/src/types/global.d.ts
+index 0f8e6e6..fbb911b 100644
+--- a/src/types/global.d.ts
++++ b/src/types/global.d.ts
+@@ -1,8 +1,2 @@
+ declare module "*.scss";
+ declare module "*.css";
+-
+-interface Window {
+-    umami?: {
+-        track: (eventName: string, eventData?: Record<string, string | number | boolean>) => void;
+-    };
+-}

@@ -1,0 +1,119 @@
+diff --git a/src/components/sidebar_search.ts b/src/components/sidebar_search.ts
+index 45f9465..c68a2ab 100644
+--- a/src/components/sidebar_search.ts
++++ b/src/components/sidebar_search.ts
+@@ -127,40 +127,7 @@ export class SidebarSearch extends SidebarItem {
+             return;
+         }
+ 
+-        // Try to resolve "location_string" via a nominatim search
+-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${location_string}`;
+-        fetch(url)
+-            .then((response: Response): Promise<any> => {
+-                if (!response.ok) {
+-                    throw new Error("Network response was not ok");
+-                }
+-                const contentType = response.headers.get("content-type");
+-                if (contentType === null || !contentType.includes("application/json")) {
+-                    throw new TypeError("Response is not JSON");
+-                }
+-
+-                return response.json();
+-            })
+-            .then((json_data): void => {
+-                const results: INameCoordinates[] = [];
+-                if (json_data.length > 0) {
+-                    json_data.forEach((element: any) => {
+-                        results.push({
+-                            name: element.display_name,
+-                            coordinates: new Coordinates(
+-                                parseFloat(element.lat),
+-                                parseFloat(element.lon),
+-                            ),
+-                        });
+-                    });
+-                } else {
+-                    this.app.message_error(this.app.translate("search.no-result"));
+-                }
+-                this.display_results(results);
+-            })
+-            .catch((error: any): void => {
+-                this.app.message_error(this.app.translate("search.server-error", error));
+-                this.display_results([]);
+-            });
++        // Homelab: no place search, so the search text is never sent to a third party
++        this.app.message_error(this.app.translate("search.coordinates-only"));
+     }
+ }
+diff --git a/src/lang/de/translation.json b/src/lang/de/translation.json
+index b2cb122..ad5e745 100644
+--- a/src/lang/de/translation.json
++++ b/src/lang/de/translation.json
+@@ -106,8 +106,8 @@
+             "marker_created": "Ein neuer Marker wurde hinzugef\u00fcgt."
+         },
+         "search": {
+-            "no-result": "Es konnte keine passender Ort gefunden werden.",
+-            "server-error": "Fehler beim Kontaktieren des 'Nominatim'-Servers: {1}"
++            "coordinates-only": "Die Ortssuche ist auf dieser Instanz abgeschaltet. Bitte Koordinaten eingeben.",
++            "no-result": "Es konnte keine passender Ort gefunden werden."
+         },
+         "sidebar": {
+             "hero": {
+@@ -192,7 +192,7 @@
+                 "center-title": "Mitte der Karte",
+                 "locate-me": "Lokalisiere mich!",
+                 "locate-me-help": "Zentriere die Karte auf deiner aktuellen Position.",
+-                "search-help": "Suche nach einem Ortsnamen oder gib Koordinaten ein.",
++                "search-help": "Gib Koordinaten ein (die Ortssuche ist abgeschaltet).",
+                 "search-placeholder": "Ort",
+                 "title": "Suche"
+             },
+diff --git a/src/lang/en/translation.json b/src/lang/en/translation.json
+index 8e40ff5..aec5997 100644
+--- a/src/lang/en/translation.json
++++ b/src/lang/en/translation.json
+@@ -106,8 +106,8 @@
+             "marker_created": "A new marker has been created."
+         },
+         "search": {
+-            "no-result": "Cannot find matching location.",
+-            "server-error": "Failed to contact 'Nominatim' server: {1}"
++            "coordinates-only": "Place search is disabled on this instance. Please enter coordinates.",
++            "no-result": "Cannot find matching location."
+         },
+         "sidebar": {
+             "hero": {
+@@ -192,7 +192,7 @@
+                 "center-title": "Center of the Map",
+                 "locate-me": "Locate Me",
+                 "locate-me-help": "Determine your current location and center the map.",
+-                "search-help": "Search for a place or enter coordinates.",
++                "search-help": "Search for coordinates (place search is disabled).",
+                 "search-placeholder": "Location",
+                 "title": "Search"
+             },
+diff --git a/src/lang/fr/translation.json b/src/lang/fr/translation.json
+index 52273cb..91356a7 100644
+--- a/src/lang/fr/translation.json
++++ b/src/lang/fr/translation.json
+@@ -106,8 +106,8 @@
+             "marker_created": "Un nouveau marqueur a \u00e9t\u00e9 ajout\u00e9."
+         },
+         "search": {
+-            "no-result": "Aucun lieu appropri\u00e9 n'a \u00e9t\u00e9 trouv\u00e9.",
+-            "server-error": "Erreur lors du contact avec le serveur 'Nominatim' : {1}"
++            "coordinates-only": "La recherche de lieux est d\u00e9sactiv\u00e9e sur cette instance. Saisis des coordonn\u00e9es.",
++            "no-result": "Aucun lieu appropri\u00e9 n'a \u00e9t\u00e9 trouv\u00e9."
+         },
+         "sidebar": {
+             "hero": {
+@@ -192,7 +192,7 @@
+                 "center-title": "Centre de la carte",
+                 "locate-me": "Localise-moi !",
+                 "locate-me-help": "Centre la carte sur ta position actuelle.",
+-                "search-help": "Cherche un nom de lieu ou saisis des coordonn\u00e9es.",
++                "search-help": "Saisis des coordonn\u00e9es (la recherche de lieux est d\u00e9sactiv\u00e9e).",
+                 "search-placeholder": "Lieu",
+                 "title": "Chercher"
+             },

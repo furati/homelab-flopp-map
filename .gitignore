@@ -1,0 +1,12 @@
+# Arbeitskopien und Build-Ausgaben
+upstream/
+dist/
+node_modules/
+.lock-tmp/
+
+# Secrets
+.env
+*-secret.yaml
+!*-sealedsecret.yaml
+
+.DS_Store

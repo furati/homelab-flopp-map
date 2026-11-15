@@ -1,0 +1,35 @@
+# Hostliste der gebauten Seite (FR-9). Jede Zeile:
+#   host | klasse | zweck | kartenzustand erkennbar?
+# Klassen:
+#   tile         Abruf beim Laden bzw. Bedienen der Karte; muss in img-src der CSP (nginx.conf) stehen
+#   link         nur Verweis oder Text, kein Abruf beim Laden (erst bei Klick des Nutzers)
+#   xmlns        XML-Namensraum in GPX/SVG, wird nie abgerufen
+#   same-origin  eigene Instanz
+# {s} steht für die Subdomains a, b, c.
+# tools/check-hosts.mjs lässt den Build scheitern, wenn dist/ einen Host enthält, der hier fehlt,
+# oder wenn ein Eintrag hier nicht mehr in dist/ vorkommt.
+
+{s}.tile.openstreetmap.org | tile | Kartenebene OpenStreetMap (Kacheln) | Kartenausschnitt (Kachel x/y/z), IP-Adresse; Referer nur Origin
+{s}.tile.opentopomap.org | tile | Kartenebene OpenTopoMap (Kacheln) | Kartenausschnitt (Kachel x/y/z), IP-Adresse; Referer nur Origin
+geodienste.bfn.de | tile | Schutzgebiets-Ebene (WMS, nur wenn aktiviert) und Verweis in der Seitenleiste | Kartenausschnitt (BBOX), IP-Adresse; Referer nur Origin
+
+blog.flopp.net | link | Dokumentation und News des Upstreams (Klick) | nein
+bugs.chromium.org | link | Verweis in einem Code-Kommentar einer Abhängigkeit | nein
+bugzilla.mozilla.org | link | Verweis in einem Code-Kommentar einer Abhängigkeit | nein
+creativecommons.org | link | Lizenzverweis in der Kachel-Attribution | nein
+flopp.net | link | Text im creator-Attribut des GPX-Exports | nein
+florian-pigorsch.de | link | Verweis im Info-Bereich der Seitenleiste (Klick) | nein
+freiburg.run | link | Verweis im Info-Bereich der Seitenleiste (Klick) | nein
+freiburg.social | link | rel=me-Verweis im Seitenkopf, kein Abruf | nein
+github.com | link | Quelle des Upstreams, Fehlerseite (Klick) | nein
+invisible-characters.com | link | Verweis im Info-Bereich der Seitenleiste (Klick) | nein
+leafletjs.com | link | Verweis in der Leaflet-Attribution | nein
+opentopomap.org | link | Attribution der Kartenebene | nein
+openstreetmap.org | link | Attribution der Kartenebenen | nein
+parkruns.de | link | Verweis im Info-Bereich der Seitenleiste (Klick) | nein
+paypal.me | link | Spendenverweis in der Seitenleiste (Klick) | nein
+www.openstreetmap.org | link | Urheberrechtsverweis in der Attribution | nein
+
+www.garmin.com | xmlns | Namensraum im GPX-Export | nein
+www.topografix.com | xmlns | Namensraum im GPX-Export | nein
+www.w3.org | xmlns | Namensraum in GPX und SVG | nein

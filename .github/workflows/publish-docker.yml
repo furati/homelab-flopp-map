@@ -1,0 +1,68 @@
+name: Create and publish a Docker image
+
+on:
+  push:
+    branches: ['main']
+    tags: ['v*']   # semver release tags -> pinned, Renovate-bumpable image versions
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Upstream-Commit aus der Pin-Datei lesen
+        id: pin
+        run: |
+          commit="$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)"
+          printf '%s' "$commit" | grep -Eq '^[0-9a-f]{40}$'
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Auf einem v*-Tag: 1.2.3 + 1.2 (semver). Auf main: main + sha-xxxx.
+          # homelab-gitops pinnt den Semver-Tag; Renovate hebt ihn an.
+          # Die Labels nennen Quelle und Revision dieses Repos (metadata-action) sowie
+          # die Upstream-Revision (Dockerfile, aus upstream.pin).
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      # Nur amd64: alle k3s-Knoten sind amd64, wie in homelab-zuhause und homelab-raumfuerraum.
+      # Die Laufzeit-Stufe führt `apk upgrade` aus; für arm64 bräuchte das QEMU (setup-qemu-action).
+      - name: Build and push Docker image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            UPSTREAM_COMMIT=${{ steps.pin.outputs.commit }}
+            VERSION=${{ steps.meta.outputs.version }}

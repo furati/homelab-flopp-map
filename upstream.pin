@@ -1,0 +1,5 @@
+# Gepinnter Stand von Flopp's Map. Renovate hebt den SHA monatlich an,
+# Dockerfile und CI lesen diese Datei (sh-kompatibel, wird per `.` eingelesen).
+# renovate: datasource=git-refs depName=https://github.com/flopp/map
+UPSTREAM_REF=master
+UPSTREAM_COMMIT=0c868739690f8f3871464846cec89a07817df0d2
