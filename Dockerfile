@@ -78,6 +78,9 @@ LABEL org.opencontainers.image.title="homelab-flopp-map" \
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/upstream/dist /usr/share/nginx/html
 
+# Nicht-Root ausdrücklich, unabhängig vom Basis-Image (nginx-unprivileged: uid 101).
+USER 101
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
