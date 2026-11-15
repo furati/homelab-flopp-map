@@ -49,11 +49,11 @@ COPY known-hosts nginx.conf /src/
 RUN node --test /src/tools/check-hosts.test.mjs
 
 # Upstream-Tests (inklusive der in den Patches angepassten).
-RUN npx vitest run
+RUN npx --no-install vitest run
 
 # version.ts mit dem Commit-Zeitstempel des Upstreams (reproduzierbar, nicht `date`).
 RUN echo "export const Version = { build_date: $(git log -1 --format=%ct) };" > src/components/version.ts \
-    && npx webpack --config webpack.prod.js
+    && npx --no-install webpack --config webpack.prod.js
 
 # Jeder neue oder entfallene Host in dist/ lässt den Build scheitern.
 RUN node /src/tools/check-hosts.mjs dist /src/known-hosts /src/nginx.conf
