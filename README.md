@@ -21,7 +21,7 @@ das Lockfile und die Abweichungen. Das Image holt den Upstream beim Build am Pin
 | `tools/check-hosts.mjs` | Host-Prüfung im Build, mit Tests (`node --test tools/`) |
 | `nginx.conf` | Header (CSP, Referrer-Policy), Caching, `/healthz`, kein Zugriffslog |
 | `Dockerfile` | Build-Stufe (Node-LTS) und Laufzeit-Stufe (nginx-unprivileged), beide per Digest gepinnt |
-| `.github/workflows/` | `build-docker.yml` (PR und Push, ohne Veröffentlichung), `publish-docker.yml` (ghcr), `renovate.yml` |
+| `.github/workflows/` | `build-docker.yml` (PR und Push, ohne Veröffentlichung, mit Rauchtest), `publish-docker.yml` (ghcr, amd64 und arm64), `renovate.yml` (monatlich) |
 | `renovate.json` | Renovate-Konfiguration (Upstream-Pin, Basis-Images, Actions) |
 
 ## Build
@@ -85,6 +85,49 @@ Zwei Verteidigungslinien halten das ein:
 2. **Host-Prüfung** im Build (`tools/check-hosts.mjs`): Ein neuer oder entfallener Host in
    `dist/` lässt den Build scheitern, bis `known-hosts` im selben PR angepasst ist. Die
    `tile`-Einträge müssen genau den Hosts in `img-src` entsprechen.
+
+## Versionen und Veröffentlichung
+
+Der Tag `vMAJOR.MINOR.PATCH` im Build-Repo ergibt den Image-Tag
+(`ghcr.io/furati/homelab-flopp-map:X.Y.Z`, dazu `X.Y`; `main` und `sha-...` bei Push auf `main`).
+
+- MINOR steigt mit jeder Upstream-Übernahme.
+- PATCH steigt bei eigenen Korrekturen und Basis-Image-Updates.
+- MAJOR steigt, wenn der Upstream das Link- oder JSON-Format ändert (Signal für die dosenwerk-Anbindung).
+
+homelab-gitops pinnt den Semver-Tag; Renovate dort öffnet den PR, der nicht automatisch gemergt wird.
+Nach der ersten Veröffentlichung muss das ghcr-Paket einmalig auf **öffentlich** gestellt werden,
+sonst schlägt der Pull ohne Pull-Secret fehl. Rollback: den gitops-PR zurücknehmen (ältere Images
+bleiben in ghcr).
+
+## Monatliches Update
+
+Der Upstream hat keine Releases. Renovate (Workflow `renovate.yml`, monatlich am 1. um 04:00 UTC
+oder per `workflow_dispatch`) vergleicht den Branch `master` mit dem Pin und öffnet bei Änderungen
+einen PR mit dem neuen SHA, dem Compare-Link `alt...neu` und der Checkliste nach AC-14.
+Basis-Images und Actions kommen im selben Lauf als eigene PRs, ohne Automerge.
+
+1. Renovate öffnet den PR mit neuem SHA.
+2. Das CI scheitert typischerweise an Patch, Lockfile oder `known-hosts`.
+3. Auf dem PR-Branch Patches und Lockfile neu erzeugen und `known-hosts` anpassen:
+   ```bash
+   git clone https://github.com/flopp/map.git /tmp/map && cd /tmp/map
+   git checkout <neuer SHA>
+   # Patches: Abweichungen aus patches/ von Hand übertragen, `git diff > ../NNNN-name.patch`
+   # Lockfile (im Verzeichnis mit der neuen package.json):
+   npm install --package-lock-only --ignore-scripts
+   cp package-lock.json <dieses Repo>/package-lock.json
+   ```
+   Den Lockfile-Diff prüfen: nur erwartete Änderungen, keine neuen Install-Skripte.
+4. Upstream-Tests und Build laufen grün (gehören zum Docker-Build).
+5. Der Tester prüft AC-3 bis AC-6 per HAR gegen das lokal gestartete Image und trägt das Ergebnis
+   in den PR ein. Ein neuer externer Host oder eine Lockerung der CSP blockiert den Merge, bis Ralf
+   entschieden hat.
+6. Ralf merged, setzt den Tag (`vX.Y.Z`, MINOR hoch) und merged danach den gitops-PR.
+
+Ohne beide Merges ändert sich die laufende Instanz nicht.
+
+Voraussetzung für Renovate ist das Repo-Secret `RENOVATE_TOKEN` (klassischer PAT mit Scope `repo`).
 
 ## Lizenz
 

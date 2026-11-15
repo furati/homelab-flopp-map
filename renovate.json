@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "Europe/Berlin",
+  "gitIgnoredAuthors": ["renovate@whitesourcesoftware.com"],
+  "prConcurrentLimit": 6,
+  "prHourlyLimit": 0,
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Upstream-Pin von Flopp's Map: Zeile '# renovate: datasource=git-refs depName=...' direkt über UPSTREAM_REF und UPSTREAM_COMMIT in upstream.pin. Renovate hebt den Digest (Commit-SHA) auf den neuesten Stand des Branches.",
+      "managerFilePatterns": ["/^upstream\\.pin$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>\\S+)\\nUPSTREAM_REF=(?<currentValue>\\S+)\\nUPSTREAM_COMMIT=(?<currentDigest>[a-f0-9]{40})"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Upstream-Übernahme: nie automatisch mergen. Die Ralf-Freigabe folgt erst nach der Prüfung nach AC-14 (Patches, Lockfile, known-hosts, HAR).",
+      "matchDepNames": ["https://github.com/flopp/map"],
+      "automerge": false,
+      "labels": ["dependencies", "upstream"],
+      "commitMessageTopic": "Flopp's Map (Upstream)",
+      "prBodyNotes": [
+        "**Upstream-Änderungen:** https://github.com/flopp/map/compare/{{{currentDigest}}}...{{{newDigest}}}",
+        "### Checkliste (AC-14, nicht mergen, bevor alles abgehakt ist)\n\n- [ ] Patches in `patches/` passen noch (Build ist grün) oder wurden neu erzeugt\n- [ ] `package-lock.json` neu erzeugt, Diff geprüft (nur erwartete Änderungen, `npm ci --ignore-scripts`)\n- [ ] Host-Prüfung grün; `known-hosts` unverändert oder jede Abweichung unten benannt und von Ralf entschieden\n- [ ] CSP in `nginx.conf` nicht gelockert\n- [ ] Upstream-Tests grün (Teil des Builds)\n- [ ] Tester: HAR-Prüfung AC-3 bis AC-6 gegen das lokal gestartete Image, Ergebnis im PR eingetragen\n- [ ] Link-/JSON-Format unverändert (sonst MAJOR-Sprung beim Tag, dosenwerk informieren)"
+      ]
+    },
+    {
+      "description": "Basis-Images und Actions als gewöhnliche PRs, kein Automerge: Ein Basis-Image-Wechsel soll erst nach dem Rauchtest im PR übernommen werden.",
+      "matchManagers": ["dockerfile", "github-actions"],
+      "automerge": false
+    }
+  ]
+}
