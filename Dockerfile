@@ -34,6 +34,10 @@ WORKDIR /src/upstream
 RUN cp /src/package-lock.json . \
     && npm ci --ignore-scripts --no-audit --no-fund
 
+# Ersatzseiten für Impressum und Datenschutz (die Upstream-Seiten nennen den
+# Betreiber von flopp.net).
+COPY overrides/ src/
+
 # Abweichungen vom Upstream. `git apply` bricht bei jedem Konflikt ab, der Build
 # scheitert dann laut, statt eine Änderung still zu verlieren.
 COPY patches/ /src/patches/
