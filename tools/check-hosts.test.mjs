@@ -3,7 +3,7 @@ import {test} from "node:test";
 
 import {compare, cspImgHosts, expandTileHost, extractHosts, parseKnownHosts} from "./check-hosts.mjs";
 
-const NGINX = `add_header Content-Security-Policy "default-src 'self'; script-src 'self'; img-src 'self' data: https://a.tile.example.org https://b.tile.example.org https://c.tile.example.org https://wms.example.org; connect-src 'self'" always;`;
+const NGINX = `add_header Content-Security-Policy "default-src 'self'; script-src 'self'; img-src 'self' data: https://a.tile.example.org https://b.tile.example.org https://c.tile.example.org https://wms.example.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;`;
 const KNOWN = parseKnownHosts(`
 # Kommentar
 {s}.tile.example.org | tile | Kacheln | Ausschnitt
@@ -61,4 +61,29 @@ test("compare: gelockerte CSP wird gemeldet", () => {
     const nginx = NGINX.replace("connect-src 'self'", "connect-src 'self' https://x.example.org");
     const found = new Set(["{s}.tile.example.org", "wms.example.org", "www.w3.org"]);
     assert.match(compare(found, KNOWN, nginx)[0], /connect-src muss genau 'self' sein/);
+});
+
+const FOUND = new Set(["{s}.tile.example.org", "wms.example.org", "www.w3.org"]);
+
+test("compare: gelockertes img-src (*, https:, http:, Wildcard-Host) wird gemeldet", () => {
+    for (const loose of ["*", "https:", "http://a.tile.example.org", "https://*.example.org"]) {
+        const nginx = NGINX.replace("img-src 'self'", `img-src ${loose} 'self'`);
+        const problems = compare(FOUND, KNOWN, nginx);
+        assert.ok(problems.some((problem) => problem.includes("img-src zu locker") && problem.includes(loose)), loose);
+    }
+});
+
+test("compare: fehlende oder gelockerte Direktiven werden gemeldet", () => {
+    for (const [directive, replacement] of [
+        ["default-src 'self'; ", ""],
+        ["default-src 'self'", "default-src *"],
+        ["base-uri 'self'; ", ""],
+        ["form-action 'self'", "form-action https://x.example.org"],
+        ["frame-ancestors 'none'", "frame-ancestors 'self'"],
+        ["object-src 'none'; ", ""],
+    ]) {
+        const problems = compare(FOUND, KNOWN, NGINX.replace(directive, replacement));
+        assert.equal(problems.length, 1, directive);
+        assert.match(problems[0], /CSP/);
+    }
 });

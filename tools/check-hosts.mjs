@@ -4,7 +4,9 @@
 // vergleicht sie mit `known-hosts`. Ein neuer oder entfallener Host lässt den
 // Build scheitern, bis die Liste im selben PR angepasst ist. Zusätzlich müssen
 // die Hosts der Klasse `tile` exakt denen in `img-src` der CSP in nginx.conf
-// entsprechen; `script-src` und `connect-src` dürfen nur 'self' enthalten.
+// entsprechen; `img-src` darf außer 'self', data:, blob: und diesen Hosts nichts
+// enthalten (kein `*`, kein `https:`). `default-src`, `script-src`, `connect-src`,
+// `base-uri`, `form-action` und `object-src`/`frame-ancestors` müssen die Sollwerte haben.
 //
 // Aufruf: node tools/check-hosts.mjs <dist> <known-hosts> <nginx.conf>
 
@@ -60,14 +62,23 @@ const cspDirective = (nginxConf, name) => {
         .split(";")
         .map((part) => part.trim())
         .find((part) => part.split(/\s+/)[0] === name);
-    if (directive === undefined) {
-        throw new Error(`nginx.conf: CSP ohne ${name}`);
-    }
-    return directive.split(/\s+/).slice(1);
+    return directive === undefined ? undefined : directive.split(/\s+/).slice(1);
 };
 
+// Sollwerte der übrigen Direktiven; ohne `default-src` fiele alles Fehlende auf "erlaubt" zurück.
+const CSP_EXACT = {
+    "default-src": "'self'",
+    "script-src": "'self'",
+    "connect-src": "'self'",
+    "object-src": "'none'",
+    "base-uri": "'self'",
+    "form-action": "'self'",
+    "frame-ancestors": "'none'",
+};
+const IMG_KEYWORDS = new Set(["'self'", "data:", "blob:"]);
+
 export const cspImgHosts = (nginxConf) =>
-    cspDirective(nginxConf, "img-src")
+    (cspDirective(nginxConf, "img-src") ?? [])
         .filter((source) => source.startsWith("https://"))
         .map((source) => source.slice("https://".length));
 
@@ -91,9 +102,21 @@ export const compare = (found, known, nginxConf) => {
     if (tiles.join(" ") !== csp.join(" ")) {
         problems.push(`tile-Hosts (${tiles.join(", ")}) entsprechen nicht img-src der CSP (${csp.join(", ")})`);
     }
-    for (const name of ["script-src", "connect-src"]) {
-        if (cspDirective(nginxConf, name).join(" ") !== "'self'") {
-            problems.push(`CSP ${name} muss genau 'self' sein`);
+    for (const [name, expected] of Object.entries(CSP_EXACT)) {
+        const actual = cspDirective(nginxConf, name);
+        if (actual === undefined) {
+            problems.push(`CSP ohne ${name} (erwartet: ${expected})`);
+        } else if (actual.join(" ") !== expected) {
+            problems.push(`CSP ${name} muss genau ${expected} sein`);
+        }
+    }
+    const img = cspDirective(nginxConf, "img-src");
+    if (img === undefined) {
+        problems.push("CSP ohne img-src (fiele auf default-src zurück)");
+    } else {
+        const loose = img.filter((source) => !IMG_KEYWORDS.has(source) && !/^https:\/\/[A-Za-z0-9.-]+$/.test(source));
+        if (loose.length > 0) {
+            problems.push(`CSP img-src zu locker: ${loose.join(", ")} (erlaubt: 'self', data:, blob: und https://<host> aus known-hosts)`);
         }
     }
     return problems;
