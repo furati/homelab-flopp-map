@@ -8,7 +8,7 @@
 #   docker build --build-arg UPSTREAM_COMMIT="$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)" \
 #                --build-arg VERSION=dev -t homelab-flopp-map:dev .
 
-FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 
 # Muss mit upstream.pin übereinstimmen; so landet kein veralteter Wert im Label.
 ARG UPSTREAM_COMMIT

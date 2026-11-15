@@ -1,0 +1,63 @@
+name: Create and publish a Docker image
+
+on:
+  push:
+    branches: ['main']
+    tags: ['v*']   # semver release tags -> pinned, Renovate-bumpable image versions
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Upstream-Commit aus der Pin-Datei lesen
+        id: pin
+        run: echo "commit=$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Auf einem v*-Tag: 1.2.3 + 1.2 (semver). Auf main: main + sha-xxxx.
+          # homelab-gitops pinnt den Semver-Tag; Renovate hebt ihn an.
+          # Die Labels nennen Quelle und Revision dieses Repos (metadata-action) sowie
+          # die Upstream-Revision (Dockerfile, aus upstream.pin).
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      # Die Build-Stufe läuft nur auf dem Build-Host (statische Dateien, plattformunabhängig),
+      # nur die nginx-Stufe entsteht je Architektur, deshalb braucht es kein QEMU.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            UPSTREAM_COMMIT=${{ steps.pin.outputs.commit }}
+            VERSION=${{ steps.meta.outputs.version }}
