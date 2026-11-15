@@ -1,0 +1,303 @@
+diff --git a/src/components/leaflet_wrapper.ts b/src/components/leaflet_wrapper.ts
+index b4a2780..ad0ee62 100644
+--- a/src/components/leaflet_wrapper.ts
++++ b/src/components/leaflet_wrapper.ts
+@@ -1,6 +1,5 @@
+ import * as L from "leaflet";
+ import "leaflet/dist/leaflet.css";
+-import "leaflet-relief";
+ 
+ import {App} from "./app";
+ import {Color} from "./color";
+@@ -10,7 +9,6 @@ import {Line} from "./line";
+ import type {MapStateChange} from "./map_state";
+ import {MapStateObserver} from "./map_state_observer";
+ import {MapType} from "./map_type";
+-import {mapterhorn_elevation_url} from "./mapterhorn_tiles";
+ import {Marker} from "./marker";
+ 
+ const from_coordinates = (c: Coordinates): L.LatLng => L.latLng(c.raw_lat(), c.raw_lng());
+@@ -38,20 +36,14 @@ export class LeafletWrapper extends MapStateObserver {
+     private automatic_event: boolean = false;
+     private german_npa_enabled: boolean = false;
+     private german_npa_layer: L.TileLayer | null = null;
+-    private osm_overlay_enabled: boolean = false;
+-    private osm_overlay_layer: L.TileLayer | null = null;
+     private readonly map: L.Map;
+     private readonly layer_openstreetmap: L.TileLayer;
+     private readonly layer_opentopomap: L.TileLayer;
+-    private readonly layer_stamen_terrain: L.TileLayer;
+-    private readonly layer_humanitarian: L.TileLayer;
+-    private readonly layer_arcgis_worldimagery: L.TileLayer;
+     private readonly layers: Map<string, L.TileLayer>;
+     private readonly midpoint_icon_css_classes: Map<string, string>;
+     private readonly styles: HTMLStyleElement;
+     private readonly markers: Map<number, IMarkerObjDict>;
+     private readonly lines: Map<number, ILineObjDict>;
+-    private mapterhorn_hillshade_layer: L.GridLayer.Relief | null = null;
+ 
+     public constructor(div_id: string, app: App) {
+         super(app);
+@@ -87,42 +79,10 @@ export class LeafletWrapper extends MapStateObserver {
+             maxZoom: 20,
+             subdomains: "abc",
+         });
+-        this.layer_stamen_terrain = L.tileLayer(
+-            "https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg",
+-            {
+-                attribution:
+-                    'Map tiles by <a href="https://stamen.com" target="_blank">Stamen Design</a>, under <a href="https://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href=https://openstreetmap.org" target="_blank">OpenStreetMap</a>, under <a href="https://www.openstreetmap.org/copyright" target="_blank">ODbL</a>.',
+-                maxNativeZoom: 17,
+-                maxZoom: 20,
+-                subdomains: "abcd",
+-            },
+-        );
+-        this.layer_humanitarian = L.tileLayer(
+-            "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+-            {
+-                attribution:
+-                    'Map tiles by the <a href="https://www.hotosm.org/updates/2013-09-29_a_new_window_on_openstreetmap_data" target="_blank">Humanitarian OSM Team</a>, under <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.fr" target="_blank">CC0</a>. Data by <a href="https://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>. Hosted by <a href="https://www.openstreetmap.fr/mentions-legales/" target="_blank">OSM France</a>.',
+-                maxZoom: 20,
+-                subdomains: "abc",
+-            },
+-        );
+-        this.layer_arcgis_worldimagery = L.tileLayer(
+-            "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+-            {
+-                attribution:
+-                    "Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community",
+-                maxNativeZoom: 18,
+-                maxZoom: 20,
+-            },
+-        );
+ 
+         this.layers = new Map();
+         this.layers.set(MapType.OPENSTREETMAP, this.layer_openstreetmap);
+         this.layers.set(MapType.OPENTOPOMAP, this.layer_opentopomap);
+-        this.layers.set(MapType.STAMEN_TERRAIN, this.layer_stamen_terrain);
+-        this.layers.set(MapType.HUMANITARIAN, this.layer_humanitarian);
+-        this.layers.set(MapType.ARCGIS_WORLDIMAGERY, this.layer_arcgis_worldimagery);
+-        this.layers.set(MapType.ARCGIS_WORLDIMAGERY_OVERLAY, this.layer_arcgis_worldimagery);
+ 
+         ["zoom", "move"].forEach((event_name: string): void => {
+             this.map.on(event_name, (): void => {
+@@ -168,8 +128,6 @@ export class LeafletWrapper extends MapStateObserver {
+             this.map.addLayer(layer);
+             layer.bringToBack();
+         }
+-
+-        this.set_osm_overlay(map_type === MapType.ARCGIS_WORLDIMAGERY_OVERLAY);
+     }
+ 
+     public set_german_npa(enabled: boolean): void {
+@@ -197,51 +155,6 @@ export class LeafletWrapper extends MapStateObserver {
+         }
+     }
+ 
+-    public set_hillshading(enabled: boolean): void {
+-        if (enabled) {
+-            if (this.mapterhorn_hillshade_layer === null) {
+-                this.mapterhorn_hillshade_layer = L.gridLayer.relief({
+-                    attribution: L.GridLayer.Relief.elevationAttributions.mapterhorn,
+-                    elevationExtractor: L.GridLayer.Relief.elevationExtractors.mapterhorn,
+-                    elevationUrl: mapterhorn_elevation_url,
+-                    maxNativeZoom: L.GridLayer.Relief.elevationMaxNativeZooms.mapterhorn + 1,
+-                    mode: "hillshade",
+-                    opacity: 0.45,
+-                    tileSize: 512,
+-                });
+-            }
+-            if (!this.map.hasLayer(this.mapterhorn_hillshade_layer)) {
+-                this.map.addLayer(this.mapterhorn_hillshade_layer);
+-            }
+-        } else if (this.mapterhorn_hillshade_layer !== null) {
+-            this.map.removeLayer(this.mapterhorn_hillshade_layer);
+-        }
+-    }
+-
+-    public set_osm_overlay(enabled: boolean): void {
+-        if (this.osm_overlay_enabled === enabled) {
+-            return;
+-        }
+-
+-        this.osm_overlay_enabled = enabled;
+-        if (enabled) {
+-            if (this.osm_overlay_layer === null) {
+-                this.osm_overlay_layer = L.tileLayer.wms("https://ows.terrestris.de/osm/service?", {
+-                    layers: "OSM-Overlay-WMS",
+-                    format: "image/png",
+-                    transparent: true,
+-                    maxNativeZoom: 14,
+-                    maxZoom: 15,
+-                    attribution:
+-                        'Map tiles by <a href="https://www.terrestris.de/en/osm-overlay-wms/" target="_blank">terrestris</a>',
+-                });
+-            }
+-            this.map.addLayer(this.osm_overlay_layer);
+-        } else if (this.osm_overlay_layer !== null) {
+-            this.map.removeLayer(this.osm_overlay_layer);
+-        }
+-    }
+-
+     public set_map_view(center: Coordinates, zoom: number): void {
+         this.automatic_event = true;
+         this.map.setView(from_coordinates(center), zoom, {animate: false});
+@@ -309,9 +222,6 @@ export class LeafletWrapper extends MapStateObserver {
+         if (changes.parts.has("map_type") || changes.parts.has("german_npa")) {
+             this.set_german_npa(this.app.map_state.german_npa);
+         }
+-        if (changes.parts.has("hillshading")) {
+-            this.set_hillshading(this.app.map_state.hillshading);
+-        }
+         if (changes.parts.has("center") || changes.parts.has("zoom")) {
+             this.set_map_view(this.app.map_state.center!, this.app.map_state.zoom!);
+         }
+diff --git a/src/components/map_type.ts b/src/components/map_type.ts
+index c54a1ac..a80c7f4 100644
+--- a/src/components/map_type.ts
++++ b/src/components/map_type.ts
+@@ -15,14 +15,12 @@ export const string2maptype = (s: string): MapType | null => {
+             return MapType.OPENSTREETMAP;
+         case MapType.OPENTOPOMAP:
+             return MapType.OPENTOPOMAP;
++        // Homelab: removed base layers fall back to OpenStreetMap
+         case MapType.STAMEN_TERRAIN:
+-            return MapType.STAMEN_TERRAIN;
+         case MapType.HUMANITARIAN:
+-            return MapType.HUMANITARIAN;
+         case MapType.ARCGIS_WORLDIMAGERY:
+-            return MapType.ARCGIS_WORLDIMAGERY;
+         case MapType.ARCGIS_WORLDIMAGERY_OVERLAY:
+-            return MapType.ARCGIS_WORLDIMAGERY_OVERLAY;
++            return MapType.OPENSTREETMAP;
+         default:
+             return null;
+     }
+diff --git a/src/components/sidebar_layers.ts b/src/components/sidebar_layers.ts
+index c3923ad..d5c4daa 100644
+--- a/src/components/sidebar_layers.ts
++++ b/src/components/sidebar_layers.ts
+@@ -12,7 +12,6 @@ export class SidebarLayers extends SidebarItem {
+     private readonly base_layers: IBaseLayerDict[];
+     private readonly base_layer_select: HTMLSelectElement;
+     private readonly german_npa_checkbox: HTMLInputElement;
+-    private readonly hillshading_checkbox: HTMLInputElement;
+ 
+     public constructor(app: App, id: string) {
+         super(app, id);
+@@ -20,10 +19,6 @@ export class SidebarLayers extends SidebarItem {
+         this.base_layers = [
+             {type: MapType.OPENSTREETMAP, option: null},
+             {type: MapType.OPENTOPOMAP, option: null},
+-            {type: MapType.STAMEN_TERRAIN, option: null},
+-            {type: MapType.HUMANITARIAN, option: null},
+-            {type: MapType.ARCGIS_WORLDIMAGERY, option: null},
+-            {type: MapType.ARCGIS_WORLDIMAGERY_OVERLAY, option: null},
+         ];
+ 
+         this.base_layer_select = this._div.querySelector("[data-base-layer]")!;
+@@ -45,12 +40,6 @@ export class SidebarLayers extends SidebarItem {
+         this.german_npa_checkbox.onchange = (): void => {
+             this.app.map_state.set_german_npa(this.german_npa_checkbox.checked);
+         };
+-
+-        this.hillshading_checkbox = this._div.querySelector("[data-hillshading-layer]")!;
+-        this.hillshading_checkbox.checked = this.app.map_state.hillshading;
+-        this.hillshading_checkbox.onchange = (): void => {
+-            this.app.map_state.set_hillshading(this.hillshading_checkbox.checked);
+-        };
+     }
+ 
+     public update_state(changes: MapStateChange): void {
+@@ -58,9 +47,6 @@ export class SidebarLayers extends SidebarItem {
+             this.base_layer_select.value = maptype2string(this.app.map_state.map_type);
+         }
+ 
+-        if (changes.parts.has("map_type") || changes.parts.has("hillshading")) {
+-            this.hillshading_checkbox.checked = this.app.map_state.hillshading;
+-        }
+         if (changes.parts.has("german_npa")) {
+             this.german_npa_checkbox.checked = this.app.map_state.german_npa;
+         }
+diff --git a/src/index.html b/src/index.html
+index c1c542a..5a0a681 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -40,21 +40,6 @@
+                     </div>
+                     <div class="field">
+                         <label class="label" data-i18n="sidebar.layers.additional">Additional Layers:</label>
+-                        <div class="control">
+-                            <label class="checkbox">
+-                                <input data-hillshading-layer type="checkbox" />
+-                                <span data-i18n="sidebar.layers.hillshading">Hillshading</span>
+-                            </label>
+-                        </div>
+-                        <p class="help mb-0" data-i18n="sidebar.layers.hillshading-help"></p>
+-                        <div class="control">
+-                            <a class="button is-text is-small" href="https://mapterhorn.com/" target="_blank">
+-                                <span>Mapterhorn</span>
+-                                <svg class="icon icon-small">
+-                                    <use xlink:href="assets/feather-sprite.svg#external-link"/>
+-                                </svg>
+-                            </a>
+-                        </div>
+                     </div>
+                     <div class="field">
+                         <div class="control">
+diff --git a/tests/map_state.test.ts b/tests/map_state.test.ts
+index db26e36..43a2ad0 100644
+--- a/tests/map_state.test.ts
++++ b/tests/map_state.test.ts
+@@ -357,7 +357,7 @@ describe("MapState mutation side effects", () => {
+     test("round trips exported JSON through import", () => {
+         const state = new MapState(create_app());
+         state.set_view(new Coordinates(48.123456, 8.654321), 12);
+-        state.set_map_type(MapType.ARCGIS_WORLDIMAGERY);
++        state.set_map_type(MapType.OPENTOPOMAP);
+         state.german_npa = true;
+         state.hillshading = true;
+         state.settings_marker_coordinates_format = CoordinatesFormat.DMS;
+diff --git a/tests/map_state_url.test.ts b/tests/map_state_url.test.ts
+index ba6f9d0..e1a7c4e 100644
+--- a/tests/map_state_url.test.ts
++++ b/tests/map_state_url.test.ts
+@@ -60,7 +60,7 @@ describe("MapState URL parsing", () => {
+         expect(url_state!.center.lat()).toBe(52.629729);
+         expect(url_state!.center.lng()).toBe(11.13739);
+         expect(url_state!.zoom).toBe(8);
+-        expect(url_state!.map_type).toBe(MapType.ARCGIS_WORLDIMAGERY);
++        expect(url_state!.map_type).toBe(MapType.OPENSTREETMAP);
+         expect(url_state!.markers).toHaveLength(3);
+         expect(url_state!.markers[0].name).toBe("A");
+         expect(url_state!.markers[0].radius).toBe(0);
+diff --git a/tests/map_type.test.ts b/tests/map_type.test.ts
+new file mode 100644
+index 0000000..7f47f91
+--- /dev/null
++++ b/tests/map_type.test.ts
+@@ -0,0 +1,24 @@
++import {describe, expect, test} from "vitest";
++
++import {MapType, string2maptype} from "../src/components/map_type";
++
++describe("string2maptype in the homelab build", () => {
++    test.each(["OPENSTREETMAP", "openstreetmap"])("keeps OpenStreetMap (%s)", (value) => {
++        expect(string2maptype(value)).toBe(MapType.OPENSTREETMAP);
++    });
++
++    test("keeps OpenTopoMap", () => {
++        expect(string2maptype("OPENTOPOMAP")).toBe(MapType.OPENTOPOMAP);
++    });
++
++    test.each(["STAMEN_TERRAIN", "HUMANITARIAN", "ARCGIS_WORLDIMAGERY", "ARCGIS_WORLDIMAGERY_OVERLAY"])(
++        "maps the removed base layer %s to OpenStreetMap",
++        (value) => {
++            expect(string2maptype(value)).toBe(MapType.OPENSTREETMAP);
++        },
++    );
++
++    test("still rejects unknown values", () => {
++        expect(string2maptype("UNKNOWN")).toBeNull();
++    });
++});
