@@ -76,8 +76,11 @@ Weitere Abweichungen ohne Patch:
 - `version.json` hat zusätzlich `upstream_commit` und `version`.
 - `nginx.conf` setzt die CSP, die Referrer-Policy `strict-origin-when-cross-origin`,
   `X-Content-Type-Options` und HSTS (`max-age=31536000`). Das nginx-Zugriffslog ist aus.
-  HSTS bewusst **ohne** `includeSubDomains` und `preload`, weil unter `athome` Dienste nur
-  über HTTP laufen (garten-ota, tasmota-ota). TLS terminiert Traefik, und der Ingress nimmt nur
+  HSTS bewusst **ohne** `includeSubDomains` und `preload`: `includeSubDomains` gälte nur für
+  `*.map.athome.buhlrich.com`, und solche Unterdomains gibt es nicht. `preload` ist für einen
+  internen Namen nicht möglich und nicht sinnvoll. Gefährlich wäre `includeSubDomains` erst an
+  `athome.buhlrich.com` oder `buhlrich.com`, weil dort garten-ota und tasmota-ota per HTTP laufen;
+  diese Hosts setzt dieses Repo nicht. TLS terminiert Traefik, und der Ingress nimmt nur
   HTTPS an (HTTP gibt 404). Alle `add_header` stehen auf `server`-Ebene, denn ein `add_header`
   in einem `location`-Block hebt die Vererbung auf. `tests/static.sh` prüft die Header
   deshalb auch auf `/healthz`, `/version.json`, Assets und 404, der Rauchtest im Build-Workflow HSTS.
