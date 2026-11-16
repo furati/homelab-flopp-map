@@ -47,6 +47,17 @@ h=$(curl -sI $BASE/)
 t "NFR-1 Referrer-Policy strict-origin-when-cross-origin" 'grep -qi "^referrer-policy: strict-origin-when-cross-origin" <<<"$h"'
 t "NFR-1 CSP connect-src self, script-src self" 'grep -qi "connect-src .self.;" <<<"$h" && grep -qi "script-src .self.;" <<<"$h"'
 t "NFR-1 CSP img-src nur OSM/OpenTopoMap/BfN" '! grep -i "^content-security-policy" <<<"$h" | grep -oE "https://[a-z.]+" | grep -vE "^https://([abc]\.tile\.(openstreetmap|opentopomap)\.org|geodienste\.bfn\.de)$" | grep -q .'
+# S-13: HSTS genau einmal, ohne includeSubDomains/preload. Dazu CSP und Referrer-Policy je genau
+# einmal, auch auf Pfaden mit eigenem location-Block, Assets und 404 (add_header-Vererbung).
+hdr() { curl -sI "$BASE$1" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep "^$2:"; }
+js=$(cd "$dist" && printf '%s\n' *.js | grep -E '\.[0-9a-f]{20}\.js$' | head -n 1)
+png=$(cd "$dist" && printf '%s\n' *.png | head -n 1)
+t "S-13 gehashtes JS-Asset und PNG im Artefakt gefunden" '[ -f "$dist/$js" ] && [ -f "$dist/$png" ]'
+for p in / /index.html /healthz /version.json "/$js" "/$png" /nope; do
+  t "S-13 $p: Strict-Transport-Security genau einmal, genau max-age=31536000" '[ "$(hdr "$p" strict-transport-security)" = "strict-transport-security: max-age=31536000" ]'
+  t "S-13 $p: CSP und Referrer-Policy je genau einmal" '[ "$(hdr "$p" content-security-policy | wc -l)" -eq 1 ] && [ "$(hdr "$p" referrer-policy)" = "referrer-policy: strict-origin-when-cross-origin" ]'
+done
+t "S-13 nginx.conf: add_header nur auf server-Ebene (kein add_header in location)" '! awk "/^[[:space:]]*location/{l=1} l&&/add_header/{f=1} l&&/^[[:space:]]*}/{l=0} END{exit !f}" nginx.conf'
 t "NFR-2 kein Zugriffslog im Container (Query nicht protokolliert)" 'curl -s "$BASE/?c=48.0123:7.8123&m=A:48.0123:7.8123:0:ZQXlogtest" >/dev/null; ! docker logs $CNT 2>&1 | grep -q ZQXlogtest'
 t "Rauchtest /healthz 200" '[ "$(curl -s -o /dev/null -w "%{http_code}" $BASE/healthz)" = 200 ]'
 t "Rauchtest unbekannter Pfad -> 404 (kein Proxy/Redirect nach außen)" '[ "$(curl -s -o /dev/null -w "%{http_code}" $BASE/nope)" = 404 ]'

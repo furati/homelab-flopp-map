@@ -62,6 +62,14 @@ jobs:
           grep -q "\"upstream_commit\": \"$PIN\"" version.json
           curl -fsI http://127.0.0.1:8080/ | grep -qi '^content-security-policy:'
           curl -fsI http://127.0.0.1:8080/ | grep -qi '^referrer-policy: strict-origin-when-cross-origin'
+          # S-13: HSTS genau einmal und ohne includeSubDomains, auch auf Pfaden mit
+          # eigenem location-Block, Assets und 404 (add_header-Vererbung in nginx).
+          curl -fs http://127.0.0.1:8080/ -o index.html
+          asset="$(grep -oE '[A-Za-z0-9_.-]+\.[0-9a-f]{20}\.js' index.html | head -n 1)"
+          test -n "$asset"
+          for p in / /healthz /version.json "/$asset" /nope; do
+            test "$(curl -sI "http://127.0.0.1:8080$p" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep '^strict-transport-security:')" = "strict-transport-security: max-age=31536000"
+          done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/u.js)" = 404
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:8080/assets/?c=48.1/7.8')" = 404
           docker rm -f map
