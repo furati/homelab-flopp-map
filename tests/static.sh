@@ -14,6 +14,10 @@ BASE_CONFIG=${BASE_CONFIG:-http://127.0.0.1:18081}
 IMG=${IMG:-fab010-qa:test}
 CNT=${CNT:-fab010-qa}
 CNT_CONFIG=${CNT_CONFIG:-fab010-qa-cfg}
+for c in "$CNT" "$CNT_CONFIG"; do
+  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] || {
+    echo "ABBRUCH: Testcontainer $c läuft nicht (beide Container starten, siehe Kopf von tests/static.sh)" >&2; exit 2; }
+done
 fail=0
 ok()  { echo "PASS  $1"; }
 bad() { echo "FAIL  $1"; fail=$((fail+1)); }
