@@ -1,0 +1,343 @@
+diff --git a/src/components/app.ts b/src/components/app.ts
+index a3be7db..e9d786b 100644
+--- a/src/components/app.ts
++++ b/src/components/app.ts
+@@ -13,6 +13,7 @@ import {Notifications} from "./notifications";
+ import {OverwriteProtectionDialog} from "./overwrite_protection_dialog";
+ import {ProjectionDialog} from "./projection_dialog";
+ import {Sidebar} from "./sidebar";
++import {DEFAULT_START_POSITION, StartPosition} from "./start_position";
+ import {VersionCheck} from "./version_check";
+ import {YesNoDialog} from "./yesno_dialog";
+ 
+@@ -32,7 +33,7 @@ export class App {
+     public version_check: VersionCheck;
+     private yes_no_dialog: YesNoDialog;
+ 
+-    public constructor(id_leaflet: string) {
++    public constructor(id_leaflet: string, start_position: StartPosition = DEFAULT_START_POSITION) {
+         this.notifications = new Notifications();
+ 
+         this.map_state = new MapState(this);
+@@ -41,7 +42,7 @@ export class App {
+         this.yes_no_dialog = new YesNoDialog(this);
+ 
+         const url_state: MapStateFromUrl | null = this.map_state.parse_url_state();
+-        this.map_state.restore();
++        this.map_state.restore(start_position);
+         this.map_state.clear_storage();
+ 
+         this.icon_factory = new IconFactory();
+diff --git a/src/components/map_state.ts b/src/components/map_state.ts
+index 715ad3e..2fb1a29 100644
+--- a/src/components/map_state.ts
++++ b/src/components/map_state.ts
+@@ -12,6 +12,7 @@ import {
+     MapStateJsonMarker,
+     parse_map_state_json,
+ } from "./map_state_json";
++import {DEFAULT_START_POSITION, StartPosition} from "./start_position";
+ import {Storage} from "./storage";
+ import {parse_float, parse_int} from "./utilities";
+ 
+@@ -193,14 +194,14 @@ export class MapState {
+         return data_keys.some((key: string): boolean => this.storage.exists(key));
+     }
+ 
+-    public restore(): void {
++    public restore(start_position: StartPosition = DEFAULT_START_POSITION): void {
+         // Sidebar
+         this.set_sidebar_open(this.storage.get("sidebar_open", null));
+ 
+         // Map view
+         this.set_view(
+-            this.storage.get_coordinates("center", new Coordinates(48, 8))!,
+-            this.storage.get_int("zoom", 13),
++            this.storage.get_coordinates("center", start_position.center)!,
++            this.storage.get_int("zoom", start_position.zoom),
+         );
+         this.set_map_type(
+             string2maptype(this.storage.get("map_type", maptype2string(MapType.OPENSTREETMAP))!)!,
+diff --git a/src/components/start_position.ts b/src/components/start_position.ts
+new file mode 100644
+index 0000000..a7464ac
+--- /dev/null
++++ b/src/components/start_position.ts
+@@ -0,0 +1,76 @@
++import {Coordinates} from "./coordinates";
++
++// Homelab: the default map view (used only without stored state and without URL
++// parameters) can be set by an optional config.json next to index.html:
++//   {"center": {"lat": <number>, "lon": <number>}, "zoom": <integer>}
++// A missing, unreadable or invalid file falls back to the upstream default.
++
++export interface StartPosition {
++    center: Coordinates;
++    zoom: number;
++}
++
++export const DEFAULT_START_POSITION: StartPosition = {
++    center: new Coordinates(48, 8),
++    zoom: 13,
++};
++
++export const START_POSITION_URL = "config.json";
++export const START_POSITION_TIMEOUT_MS = 2000;
++const MIN_ZOOM = 0;
++const MAX_ZOOM = 20;
++
++const is_object = (value: unknown): value is Record<string, unknown> =>
++    typeof value === "object" && value !== null && !Array.isArray(value);
++
++const is_number_in = (value: unknown, min: number, max: number): value is number =>
++    typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
++
++export const parse_start_position = (data: unknown): StartPosition | null => {
++    if (!is_object(data) || !is_object(data.center)) {
++        return null;
++    }
++    const {lat, lon} = data.center;
++    const {zoom} = data;
++    if (
++        !is_number_in(lat, -90, 90) ||
++        !is_number_in(lon, -180, 180) ||
++        !is_number_in(zoom, MIN_ZOOM, MAX_ZOOM) ||
++        !Number.isInteger(zoom)
++    ) {
++        return null;
++    }
++
++    return {center: new Coordinates(lat, lon), zoom};
++};
++
++export const load_start_position = async (
++    timeout_ms: number = START_POSITION_TIMEOUT_MS,
++): Promise<StartPosition> => {
++    const controller = new AbortController();
++    const timer = setTimeout((): void => controller.abort(), timeout_ms);
++    try {
++        const response = await fetch(START_POSITION_URL, {
++            cache: "no-store",
++            signal: controller.signal,
++        });
++        if (response.status === 404) {
++            return DEFAULT_START_POSITION;
++        }
++        if (!response.ok) {
++            throw new Error(`status=${response.status}`);
++        }
++        const start_position = parse_start_position(await response.json());
++        if (start_position === null) {
++            throw new Error("invalid content");
++        }
++
++        return start_position;
++    } catch (error) {
++        console.warn(`Ignoring ${START_POSITION_URL}, using the default start position:`, error);
++
++        return DEFAULT_START_POSITION;
++    } finally {
++        clearTimeout(timer);
++    }
++};
+diff --git a/src/main.ts b/src/main.ts
+index 20f4efb..ec55270 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,10 +1,16 @@
+ import {App} from "./components/app";
++import {load_start_position} from "./components/start_position";
+ import "./styles/styles.scss";
+ 
++// Homelab: fetch the optional start position (config.json) while the page loads
++const start_position = load_start_position();
++
+ const main = (): void => {
+-    // Remove "display:none" from body
+-    document.body.style.display = "block";
+-    (window as any).app = new App("map-container-leaflet");
++    void start_position.then((position): void => {
++        // Remove "display:none" from body
++        document.body.style.display = "block";
++        (window as any).app = new App("map-container-leaflet", position);
++    });
+ };
+ 
+ console.log(document.readyState);
+diff --git a/tests/start_position.test.ts b/tests/start_position.test.ts
+new file mode 100644
+index 0000000..fa2afed
+--- /dev/null
++++ b/tests/start_position.test.ts
+@@ -0,0 +1,171 @@
++import {afterEach, beforeEach, describe, expect, test, vi} from "vitest";
++
++import type {App} from "../src/components/app";
++import {Coordinates} from "../src/components/coordinates";
++import {MapState} from "../src/components/map_state";
++import {
++    DEFAULT_START_POSITION,
++    load_start_position,
++    parse_start_position,
++    START_POSITION_URL,
++} from "../src/components/start_position";
++
++const valid = {center: {lat: 50.0, lon: 10.0}, zoom: 9};
++
++describe("parse_start_position", () => {
++    test("accepts a valid configuration", () => {
++        const position = parse_start_position(valid);
++        expect(position?.center.equals(new Coordinates(50.0, 10.0))).toBe(true);
++        expect(position?.zoom).toBe(9);
++    });
++
++    test.each([
++        [{center: {lat: -90, lon: -180}, zoom: 0}],
++        [{center: {lat: 90, lon: 180}, zoom: 20}],
++    ])("accepts the limits %j", (data) => {
++        expect(parse_start_position(data)).not.toBeNull();
++    });
++
++    test.each([
++        ["null", null],
++        ["an array", [valid]],
++        ["a string", "50.0,10.0"],
++        ["no center", {zoom: 9}],
++        ["no zoom", {center: {lat: 50.0, lon: 10.0}}],
++        ["center as array", {center: [50.0, 10.0], zoom: 9}],
++        ["lat as string", {center: {lat: "50.0", lon: 10.0}, zoom: 9}],
++        ["lon missing", {center: {lat: 50.0}, zoom: 9}],
++        ["lat > 90", {center: {lat: 90.1, lon: 10.0}, zoom: 9}],
++        ["lat < -90", {center: {lat: -90.1, lon: 10.0}, zoom: 9}],
++        ["lon > 180", {center: {lat: 50.0, lon: 180.1}, zoom: 9}],
++        ["lon < -180", {center: {lat: 50.0, lon: -180.1}, zoom: 9}],
++        ["lat NaN", {center: {lat: NaN, lon: 10.0}, zoom: 9}],
++        ["zoom not an integer", {center: {lat: 50.0, lon: 10.0}, zoom: 9.5}],
++        ["zoom < 0", {center: {lat: 50.0, lon: 10.0}, zoom: -1}],
++        ["zoom > 20", {center: {lat: 50.0, lon: 10.0}, zoom: 21}],
++        ["zoom as string", {center: {lat: 50.0, lon: 10.0}, zoom: "9"}],
++    ])("rejects %s", (_name, data) => {
++        expect(parse_start_position(data)).toBeNull();
++    });
++});
++
++describe("load_start_position", () => {
++    afterEach(() => {
++        vi.unstubAllGlobals();
++        vi.restoreAllMocks();
++        vi.useRealTimers();
++    });
++
++    const stub_fetch = (response: () => Promise<Response>) => {
++        const fetch = vi.fn<typeof globalThis.fetch>(() => response());
++        vi.stubGlobal("fetch", fetch);
++
++        return fetch;
++    };
++
++    const json_response =
++        (body: string, status = 200): (() => Promise<Response>) =>
++        () =>
++            Promise.resolve(
++                new Response(body, {status, headers: {"Content-Type": "application/json"}}),
++            );
++
++    test("fetches config.json from the same origin without cache", async () => {
++        const fetch = stub_fetch(json_response(JSON.stringify(valid)));
++        const position = await load_start_position();
++        expect(fetch).toHaveBeenCalledOnce();
++        expect(fetch.mock.calls[0][0]).toBe(START_POSITION_URL);
++        expect(START_POSITION_URL).toBe("config.json");
++        expect(fetch.mock.calls[0][1]).toMatchObject({cache: "no-store"});
++        expect(position.center.equals(new Coordinates(50.0, 10.0))).toBe(true);
++        expect(position.zoom).toBe(9);
++    });
++
++    test("falls back silently on 404", async () => {
++        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
++        stub_fetch(json_response("not found", 404));
++        expect(await load_start_position()).toBe(DEFAULT_START_POSITION);
++        expect(warn).not.toHaveBeenCalled();
++    });
++
++    test.each([
++        ["broken JSON", json_response("{kaputt")],
++        ["invalid values", json_response(JSON.stringify({center: {lat: 91, lon: 10}, zoom: 9}))],
++        ["server error", json_response(JSON.stringify(valid), 500)],
++        ["network error", () => Promise.reject(new TypeError("Failed to fetch"))],
++    ])("falls back with a warning on %s", async (_name, response) => {
++        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
++        stub_fetch(response);
++        expect(await load_start_position()).toBe(DEFAULT_START_POSITION);
++        expect(warn).toHaveBeenCalledOnce();
++    });
++
++    test("falls back after the timeout", async () => {
++        vi.useFakeTimers();
++        vi.spyOn(console, "warn").mockImplementation(() => undefined);
++        vi.stubGlobal(
++            "fetch",
++            vi.fn<typeof globalThis.fetch>(
++                (_url, init) =>
++                    new Promise<Response>((_resolve, reject) => {
++                        init?.signal?.addEventListener("abort", () =>
++                            reject(new DOMException("aborted", "AbortError")),
++                        );
++                    }),
++            ),
++        );
++        const result = load_start_position(2000);
++        await vi.advanceTimersByTimeAsync(2000);
++        expect(await result).toBe(DEFAULT_START_POSITION);
++    });
++});
++
++describe("MapState.restore with a start position", () => {
++    let values: Map<string, string>;
++
++    beforeEach(() => {
++        values = new Map();
++        vi.stubGlobal("window", {
++            localStorage: {
++                getItem: (key: string): string | null => values.get(key) ?? null,
++                setItem: (key: string, value: string): void => {
++                    values.set(key, value);
++                },
++                removeItem: (key: string): void => {
++                    values.delete(key);
++                },
++            },
++        });
++    });
++
++    afterEach(() => {
++        vi.unstubAllGlobals();
++    });
++
++    const restore = (start_position?: Parameters<MapState["restore"]>[0]): MapState => {
++        const state = new MapState({translate: (key: string): string => key} as unknown as App);
++        state.restore(start_position);
++
++        return state;
++    };
++
++    test("uses the upstream default without a start position", () => {
++        const state = restore();
++        expect(state.center?.equals(new Coordinates(48, 8))).toBe(true);
++        expect(state.zoom).toBe(13);
++    });
++
++    test("uses the start position without stored state", () => {
++        const state = restore({center: new Coordinates(50.0, 10.0), zoom: 9});
++        expect(state.center?.equals(new Coordinates(50.0, 10.0))).toBe(true);
++        expect(state.zoom).toBe(9);
++    });
++
++    test("stored state wins over the start position", () => {
++        values.set("center", "47.5;9");
++        values.set("zoom", "12");
++        const state = restore({center: new Coordinates(50.0, 10.0), zoom: 9});
++        expect(state.center?.equals(new Coordinates(47.5, 9))).toBe(true);
++        expect(state.zoom).toBe(12);
++    });
++});

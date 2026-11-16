@@ -19,8 +19,8 @@ das Lockfile und die Abweichungen. Das Image holt den Upstream beim Build am Pin
 | `overrides/` | Ersatzseiten `imprint.html` und `privacy.html` |
 | `known-hosts` | klassifizierte Liste aller Hosts in der gebauten Seite (**Hostliste**, FR-9) |
 | `tools/check-hosts.mjs` | Host-Prüfung im Build, mit Tests (`node --test tools/`) |
-| `nginx.conf` | Header (CSP, Referrer-Policy, HSTS), Caching, `/healthz`, kein Zugriffslog |
-| `tests/` | `static.sh` (Prüfungen gegen ein laufendes Testimage, Aufruf im Kopf der Datei) und `browser/` (Browser-Tests, Netzwerkmitschnitt); gehören zu Schritt 5 des Monatsupdates |
+| `nginx.conf` | Header (CSP, Referrer-Policy, HSTS), Caching, `/healthz`, `/config.json`, kein Zugriffslog |
+| `tests/` | `static.sh` (Prüfungen gegen laufende Testcontainer, Aufruf im Kopf der Datei), `browser/` (Browser-Tests, Netzwerkmitschnitt, Startposition) und `fixtures/` (Test-`config.json` mit neutraler Koordinate); gehören zu Schritt 5 des Monatsupdates |
 | `Dockerfile` | Build-Stufe (Node-LTS) und Laufzeit-Stufe (nginx-unprivileged), beide per Digest gepinnt |
 | `.github/workflows/` | `build-docker.yml` (PR und Push, ohne Veröffentlichung, mit Rauchtest), `publish-docker.yml` (ghcr, nur amd64), `renovate.yml` (monatlich) |
 | `renovate.json` | Renovate-Konfiguration (Upstream-Pin, Basis-Images, Actions) |
@@ -67,6 +67,7 @@ Das Cluster-Deployment liegt in **homelab-gitops** (`manifests/flopp-map/`, `app
 | `0002-search-coordinates-only` | Das Suchfeld versteht nur Koordinaten. Der Nominatim-Rückfall fehlt, stattdessen erscheint ein Hinweis (de, en, fr). | Suchtext geht nicht an Dritte, FR-10 |
 | `0003-layers` | Nur OpenStreetMap, OpenTopoMap und die BfN-Schutzgebiets-Ebene. Stamen, Humanitarian, ArcGIS (auch mit terrestris-Overlay) und das Mapterhorn-Hillshading sind samt Code entfernt. `t=`-Werte dieser Ebenen (URL, localStorage, JSON-Import) fallen auf OpenStreetMap zurück. Zwei Upstream-Tests sind angepasst, `tests/map_type.test.ts` kommt dazu. | Weniger Drittserver, FR-11 |
 | `0004-no-analytics-remnants` | Die wirkungslosen Umami-Reste (`window.umami?.track`, Hash-Schalter `#enable-/#disable-umami`, Typdeklaration) sind entfernt. | Kein toter Analytics-Code, FR-8, AC-6 |
+| `0005-default-position` | Die Startposition (Upstream fest 48/8, Zoom 13) kommt optional aus `/config.json`. Neues Modul `start_position.ts` mit Test `tests/start_position.test.ts`; in `main.ts`, `app.ts` und `map_state.ts` ändern sich nur wenige Zeilen. | Startposition per Konfiguration, ohne sie ins öffentliche Repo zu schreiben (CR-1, siehe [Startposition](#startposition)) |
 
 Weitere Abweichungen ohne Patch:
 
@@ -88,6 +89,43 @@ Weitere Abweichungen ohne Patch:
 **Keine Umami-Reste:** `0004-no-analytics-remnants` entfernt die `window.umami?.track(...)`-Aufrufe,
 die Schalter `#enable-/#disable-umami` und die Typdeklaration. Im `dist/` gibt es keinen Treffer für `umami`.
 `mapterhorn` kommt nur noch in Übersetzungstexten und im News-Text vor.
+
+## Startposition
+
+Ohne Link-Parameter und ohne gespeicherten Zustand öffnet die Karte an einer festen Startposition.
+Im Upstream ist das 48/8, Zoom 13. Patch `0005-default-position` liest sie optional aus
+`/config.json` (gleiche Origin):
+
+```json
+{ "center": { "lat": 50.0, "lon": 10.0 }, "zoom": 9 }
+```
+
+Die Werte im Beispiel sind neutrale Testwerte (`tests/fixtures/config-test.json`).
+
+- **Format:** `lat` −90 bis 90 und `lon` −180 bis 180 als Zahlen (kein Text), `zoom` ganzzahlig
+  0 bis 20 (höchste Zoomstufe der Karte). Alle drei Werte sind Pflicht.
+- **Bereitstellung:** Das Image enthält **keine** `config.json`. Die echte Startposition ist privat
+  und steht nur im privaten homelab-gitops, nie in diesem Repo, in Tests oder im Image. Der Cluster
+  bindet die Datei als ConfigMap per `subPath` read-only nach `/usr/share/nginx/html/config.json`
+  ein; das geht mit schreibgeschütztem Root-Dateisystem. Lokal:
+  `docker run --rm --read-only --tmpfs /tmp -p 8080:8080 -v "$PWD/config.json:/usr/share/nginx/html/config.json:ro" homelab-flopp-map:dev`.
+- **Laden:** Die App holt die Datei beim Start genau einmal (`fetch("config.json")`, `cache: "no-store"`,
+  Timeout 2 s), bevor sie den Kartenzustand aufbaut. nginx liefert sie mit `Cache-Control: no-store`;
+  dafür reicht die CSP `connect-src 'self'`.
+- **Vorrang wie im Upstream:** Link-Parameter (`?c=`, `z=`, Marker) vor gespeichertem Zustand im
+  Browser (localStorage: letzte Kartenmitte und Zoomstufe) vor `config.json` vor 48/8, Zoom 13.
+  `config.json` ersetzt also nur den Upstream-Default.
+- **Fallback:** Fehlt die Datei (404), antwortet sie nicht innerhalb von 2 s, ist sie kein gültiges JSON
+  oder liegt ein Wert außerhalb des Bereichs, startet die Karte bei 48/8, Zoom 13, ohne Fehlerdialog.
+  Außer beim 404 steht in der Browser-Konsole eine Warnung (`Ignoring config.json …`). Den 404 zeigt
+  der Browser selbst als fehlgeschlagene Anfrage an; nginx schreibt ihn nicht ins Fehlerlog.
+- **Änderungen wirken nur für neue Browser:** Wer die Instanz schon geöffnet hat, hat Kartenmitte und
+  Zoomstufe im localStorage; dort wirkt eine geänderte Startposition erst nach dem Löschen der
+  Website-Daten. Eine per `subPath` eingebundene ConfigMap wird im laufenden Pod nicht aktualisiert,
+  eine Änderung braucht einen Neustart des Pods.
+- **Datenschutz:** Jeder, der die Instanz erreicht (LAN/VPN), kann `/config.json` abrufen. Die
+  Kachelhosts sehen beim ersten Aufruf den Ausschnitt um die Startposition, wie bei jeder anderen
+  Kartenansicht auch.
 
 ## Hostliste (Datenschutz)
 
@@ -135,18 +173,35 @@ Basis-Images und Actions kommen im selben Lauf als eigene PRs, ohne Automerge.
    ```bash
    git clone https://github.com/flopp/map.git /tmp/map && cd /tmp/map
    git checkout <neuer SHA>
-   # Patches: Abweichungen aus patches/ von Hand übertragen, `git diff > ../NNNN-name.patch`
+   P=<dieses Repo>/patches
+   # Patches einzeln in Nummernfolge anwenden, nach jedem committen (Betreff = Dateiname):
+   git apply --3way "$P/0001-no-analytics.patch"   # Konflikte von Hand lösen
+   git add -A && git commit -qm 0001-no-analytics.patch
+   # … ebenso 0002 bis 0005, immer auf dem Stand nach dem Vorgänger
+   # Jeden Patch als Diff zu seinem Vorgänger neu erzeugen:
+   prev=<neuer SHA>
+   for c in $(git rev-list --reverse "$prev"..HEAD); do
+     git diff "$prev" "$c" > "$P/$(git log -1 --format=%s "$c")"; prev=$c
+   done
    # Lockfile (im Verzeichnis mit der neuen package.json):
    npm install --package-lock-only --ignore-scripts
    cp package-lock.json <dieses Repo>/package-lock.json
    ```
+   Die Patches bauen aufeinander auf. Das Dockerfile wendet sie in einem Aufruf in Nummernfolge an.
+   Deshalb muss jeder Patch gegen den Stand nach seinen Vorgängern erzeugt sein, nicht gegen den Pin.
+   Ausdrücklich gilt das für **0004 → 0005**: Beide ändern `src/main.ts` und `src/components/app.ts`,
+   und 0005 lässt sich nur nach 0004 anwenden. 0001 und 0003 ändern beide `src/index.html`.
+   Ein Patch, der gegen den Pin erzeugt wurde, kann den Build an `git apply` scheitern lassen.
    Den Lockfile-Diff prüfen: nur erwartete Änderungen, keine neuen Install-Skripte.
 4. Upstream-Tests und Build laufen grün (gehören zum Docker-Build). Der Build-Workflow prüft außerdem,
    dass der Pin auf `master` des Upstreams liegt (GitHub liefert über `flopp/map.git` auch Commits aus Forks).
    Bei einem von Hand eingetragenen Pin lokal: `git merge-base --is-ancestor <SHA> origin/master`.
 5. Der Tester prüft AC-3 bis AC-6 per HAR gegen das lokal gestartete Image und trägt das Ergebnis
    in den PR ein. Ein neuer externer Host oder eine Lockerung der CSP blockiert den Merge, bis Ralf
-   entschieden hat.
+   entschieden hat. Für die Startposition (0005) müssen außerdem `tests/static.sh` mit zwei
+   Containern (Aufruf im Kopf der Datei) und `tests/browser/start-position.mjs` grün sein. Ein
+   Upstream-Umbau von `restore()` oder `main.ts` kann 0005 still entwerten, obwohl der Patch sauber
+   angewendet wird.
 6. Ralf merged, setzt den Tag (`vX.Y.Z`, MINOR hoch) und merged danach den gitops-PR.
 
 Ohne beide Merges ändert sich die laufende Instanz nicht.
