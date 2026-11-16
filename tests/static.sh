@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# FAB-010 Tests ohne Browser: AC-6, AC-12, AC-13/14 (Konfiguration), AC-16, Härtung (NFR-3).
-# Aufruf aus dem Repo-Wurzelverzeichnis; benötigt Docker und ein laufendes Testimage:
+# FAB-010 Tests ohne Browser: AC-6, AC-12, AC-13/14 (Konfiguration), AC-16, Härtung (NFR-3), CR-1.
+# Aufruf aus dem Repo-Wurzelverzeichnis; benötigt Docker und zwei laufende Testcontainer
+# (der zweite mit der Test-config.json für CR-1 Startposition, read-only eingebunden):
 #   docker build --build-arg UPSTREAM_COMMIT="$(sed -n 's/^UPSTREAM_COMMIT=//p' upstream.pin)" --build-arg VERSION=qa -t fab010-qa:test .
 #   docker run -d --name fab010-qa -p 127.0.0.1:18080:8080 --read-only --tmpfs /tmp --cap-drop ALL fab010-qa:test
+#   docker run -d --name fab010-qa-cfg -p 127.0.0.1:18081:8080 --read-only --tmpfs /tmp --cap-drop ALL \
+#     -v "$PWD/tests/fixtures/config-test.json:/usr/share/nginx/html/config.json:ro" fab010-qa:test
 #   tests/static.sh
+# Browser-Tests danach mit denselben Containern: tests/browser/*.mjs (BASE, BASE_CONFIG).
 set -u
 BASE=${BASE:-http://127.0.0.1:18080}
+BASE_CONFIG=${BASE_CONFIG:-http://127.0.0.1:18081}
 IMG=${IMG:-fab010-qa:test}
 CNT=${CNT:-fab010-qa}
+CNT_CONFIG=${CNT_CONFIG:-fab010-qa-cfg}
 fail=0
 ok()  { echo "PASS  $1"; }
 bad() { echo "FAIL  $1"; fail=$((fail+1)); }
@@ -53,11 +59,29 @@ hdr() { curl -sI "$BASE$1" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep "^$2
 js=$(cd "$dist" && printf '%s\n' *.js | grep -E '\.[0-9a-f]{20}\.js$' | head -n 1)
 png=$(cd "$dist" && printf '%s\n' *.png | head -n 1)
 t "S-13 gehashtes JS-Asset und PNG im Artefakt gefunden" '[ -f "$dist/$js" ] && [ -f "$dist/$png" ]'
-for p in / /index.html /healthz /version.json "/$js" "/$png" /nope; do
+for p in / /index.html /healthz /version.json /config.json "/$js" "/$png" /nope; do
   t "S-13 $p: Strict-Transport-Security genau einmal, genau max-age=31536000" '[ "$(hdr "$p" strict-transport-security)" = "strict-transport-security: max-age=31536000" ]'
   t "S-13 $p: CSP und Referrer-Policy je genau einmal" '[ "$(hdr "$p" content-security-policy | wc -l)" -eq 1 ] && [ "$(hdr "$p" referrer-policy)" = "referrer-policy: strict-origin-when-cross-origin" ]'
 done
 t "S-13 nginx.conf: add_header nur auf server-Ebene (kein add_header in location)" '! awk "/^[[:space:]]*location/{l=1} l&&/add_header/{f=1} l&&/^[[:space:]]*}/{l=0} END{exit !f}" nginx.conf'
+
+# CR-1 Startposition (Patch 0005): /config.json nie im Image, im Cluster read-only eingebunden;
+# Cache-Control no-store; CSP, HSTS und Referrer-Policy wie überall genau einmal.
+t "CR-1 Artefakt enthält keine config.json" '[ ! -e "$dist/config.json" ]'
+t "CR-1 ohne Mount: /config.json liefert 404" '[ "$(curl -s -o /dev/null -w "%{http_code}" $BASE/config.json)" = 404 ]'
+t "CR-1 ohne Mount: 404 auf /config.json landet nicht im Fehlerlog" '! docker logs $CNT 2>&1 | grep -q "config\.json"'
+cfg_hdr() { curl -sI "$BASE_CONFIG$1" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep "^$2:"; }
+t "CR-1 Mount-Container läuft read-only mit cap-drop ALL" '[ "$(docker inspect -f "{{.HostConfig.ReadonlyRootfs}}" $CNT_CONFIG)" = true ] && docker inspect -f "{{.HostConfig.CapDrop}}" $CNT_CONFIG | grep -q ALL'
+t "CR-1 mit Mount: /config.json liefert 200 und genau die Test-Datei" '[ "$(curl -s -o /dev/null -w "%{http_code}" $BASE_CONFIG/config.json)" = 200 ] && curl -s $BASE_CONFIG/config.json | cmp -s - tests/fixtures/config-test.json'
+t "CR-1 mit Mount: Content-Type application/json" '[ "$(cfg_hdr /config.json content-type)" = "content-type: application/json" ]'
+for b in "$BASE" "$BASE_CONFIG"; do
+  t "CR-1 $b/config.json: Cache-Control genau einmal, genau no-store" '[ "$(curl -sI "$b/config.json" | tr -d "\r" | tr "[:upper:]" "[:lower:]" | grep "^cache-control:")" = "cache-control: no-store" ]'
+done
+t "CR-1 mit Mount: HSTS, CSP und Referrer-Policy auf /config.json je genau einmal" '[ "$(cfg_hdr /config.json strict-transport-security)" = "strict-transport-security: max-age=31536000" ] && [ "$(cfg_hdr /config.json content-security-policy | wc -l)" -eq 1 ] && [ "$(cfg_hdr /config.json referrer-policy)" = "referrer-policy: strict-origin-when-cross-origin" ]'
+t "CR-1 CSP connect-src bleibt genau self (kein Fremdhost für config.json)" '[ "$(cfg_hdr /config.json content-security-policy | grep -oE "connect-src [^;]*")" = "connect-src '"'"'self'"'"'" ]'
+t "CR-1 andere JSON/HTML weiter no-cache (nicht no-store)" '[ "$(cfg_hdr /version.json cache-control)" = "cache-control: no-cache, max-age=0, must-revalidate" ] && [ "$(cfg_hdr /index.html cache-control)" = "cache-control: no-cache, max-age=0, must-revalidate" ]'
+t "CR-1 Test-config.json nutzt nur die neutrale Testkoordinate 50.0/10.0" 'python3 -c "import json,sys;c=json.load(open(\"tests/fixtures/config-test.json\"));sys.exit(0 if c==dict(center=dict(lat=50.0,lon=10.0),zoom=9) else 1)"'
+
 t "NFR-2 kein Zugriffslog im Container (Query nicht protokolliert)" 'curl -s "$BASE/?c=48.0123:7.8123&m=A:48.0123:7.8123:0:ZQXlogtest" >/dev/null; ! docker logs $CNT 2>&1 | grep -q ZQXlogtest'
 t "Rauchtest /healthz 200" '[ "$(curl -s -o /dev/null -w "%{http_code}" $BASE/healthz)" = 200 ]'
 t "Rauchtest unbekannter Pfad -> 404 (kein Proxy/Redirect nach außen)" '[ "$(curl -s -o /dev/null -w "%{http_code}" $BASE/nope)" = 404 ]'
