@@ -19,7 +19,7 @@ das Lockfile und die Abweichungen. Das Image holt den Upstream beim Build am Pin
 | `overrides/` | Ersatzseiten `imprint.html` und `privacy.html` |
 | `known-hosts` | klassifizierte Liste aller Hosts in der gebauten Seite (**Hostliste**, FR-9) |
 | `tools/check-hosts.mjs` | Host-Prüfung im Build, mit Tests (`node --test tools/`) |
-| `nginx.conf` | Header (CSP, Referrer-Policy), Caching, `/healthz`, kein Zugriffslog |
+| `nginx.conf` | Header (CSP, Referrer-Policy, HSTS), Caching, `/healthz`, kein Zugriffslog |
 | `tests/` | `static.sh` (Prüfungen gegen ein laufendes Testimage, Aufruf im Kopf der Datei) und `browser/` (Browser-Tests, Netzwerkmitschnitt); gehören zu Schritt 5 des Monatsupdates |
 | `Dockerfile` | Build-Stufe (Node-LTS) und Laufzeit-Stufe (nginx-unprivileged), beide per Digest gepinnt |
 | `.github/workflows/` | `build-docker.yml` (PR und Push, ohne Veröffentlichung, mit Rauchtest), `publish-docker.yml` (ghcr, nur amd64), `renovate.yml` (monatlich) |
@@ -74,8 +74,13 @@ Weitere Abweichungen ohne Patch:
   des Upstreams (die nennen den Betreiber von flopp.net) durch den Hinweis auf eine private
   interne Instanz. Die Zuordnung zum Upstream (MIT, Quelle) steht in beiden Seiten.
 - `version.json` hat zusätzlich `upstream_commit` und `version`.
-- `nginx.conf` setzt die CSP, die Referrer-Policy `strict-origin-when-cross-origin` und
-  `X-Content-Type-Options`. Das nginx-Zugriffslog ist aus.
+- `nginx.conf` setzt die CSP, die Referrer-Policy `strict-origin-when-cross-origin`,
+  `X-Content-Type-Options` und HSTS (`max-age=31536000`). Das nginx-Zugriffslog ist aus.
+  HSTS bewusst **ohne** `includeSubDomains` und `preload`, weil unter `athome` Dienste nur
+  über HTTP laufen (garten-ota, tasmota-ota). TLS terminiert Traefik, und der Ingress nimmt nur
+  HTTPS an (HTTP gibt 404). Alle `add_header` stehen auf `server`-Ebene, denn ein `add_header`
+  in einem `location`-Block hebt die Vererbung auf. `tests/static.sh` prüft die Header
+  deshalb auch auf `/healthz`, `/version.json`, Assets und 404, der Rauchtest im Build-Workflow HSTS.
 
 **Keine Umami-Reste:** `0004-no-analytics-remnants` entfernt die `window.umami?.track(...)`-Aufrufe,
 die Schalter `#enable-/#disable-umami` und die Typdeklaration. Im `dist/` gibt es keinen Treffer für `umami`.
