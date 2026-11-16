@@ -76,3 +76,15 @@ jobs:
           test "$(curl -sI http://127.0.0.1:8080/config.json | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep '^cache-control:')" = "cache-control: no-store"
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:8080/assets/?c=48.1/7.8')" = 404
           docker rm -f map
+          # CR-1: Mount-Fall wie im Cluster (ConfigMap read-only als /config.json), gleiche Härtung.
+          # Die Fixture liegt im Workspace und ist im Repo 0644, also für UID 101 lesbar.
+          docker run -d --name map-cfg --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -p 8081:8080 \
+            -v "$PWD/tests/fixtures/config-test.json:/usr/share/nginx/html/config.json:ro" homelab-flopp-map:ci
+          for _ in $(seq 1 20); do curl -fs http://127.0.0.1:8081/healthz && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/config.json)" = 200
+          curl -fs http://127.0.0.1:8081/config.json | cmp - tests/fixtures/config-test.json
+          curl -fsI http://127.0.0.1:8081/config.json | tr -d '\r' | tr '[:upper:]' '[:lower:]' > config-headers.txt
+          test "$(grep '^content-type:' config-headers.txt)" = "content-type: application/json"
+          test "$(grep '^cache-control:' config-headers.txt)" = "cache-control: no-store"
+          test "$(grep '^strict-transport-security:' config-headers.txt)" = "strict-transport-security: max-age=31536000"
+          docker rm -f map-cfg
