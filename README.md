@@ -173,18 +173,35 @@ Basis-Images und Actions kommen im selben Lauf als eigene PRs, ohne Automerge.
    ```bash
    git clone https://github.com/flopp/map.git /tmp/map && cd /tmp/map
    git checkout <neuer SHA>
-   # Patches: Abweichungen aus patches/ von Hand übertragen, `git diff > ../NNNN-name.patch`
+   P=<dieses Repo>/patches
+   # Patches einzeln in Nummernfolge anwenden, nach jedem committen (Betreff = Dateiname):
+   git apply --3way "$P/0001-no-analytics.patch"   # Konflikte von Hand lösen
+   git add -A && git commit -qm 0001-no-analytics.patch
+   # … ebenso 0002 bis 0005, immer auf dem Stand nach dem Vorgänger
+   # Jeden Patch als Diff zu seinem Vorgänger neu erzeugen:
+   prev=<neuer SHA>
+   for c in $(git rev-list --reverse "$prev"..HEAD); do
+     git diff "$prev" "$c" > "$P/$(git log -1 --format=%s "$c")"; prev=$c
+   done
    # Lockfile (im Verzeichnis mit der neuen package.json):
    npm install --package-lock-only --ignore-scripts
    cp package-lock.json <dieses Repo>/package-lock.json
    ```
+   Die Patches bauen aufeinander auf. Das Dockerfile wendet sie in einem Aufruf in Nummernfolge an.
+   Deshalb muss jeder Patch gegen den Stand nach seinen Vorgängern erzeugt sein, nicht gegen den Pin.
+   Ausdrücklich gilt das für **0004 → 0005**: Beide ändern `src/main.ts` und `src/components/app.ts`,
+   und 0005 lässt sich nur nach 0004 anwenden. 0001 und 0003 ändern beide `src/index.html`.
+   Ein Patch, der gegen den Pin erzeugt wurde, kann den Build an `git apply` scheitern lassen.
    Den Lockfile-Diff prüfen: nur erwartete Änderungen, keine neuen Install-Skripte.
 4. Upstream-Tests und Build laufen grün (gehören zum Docker-Build). Der Build-Workflow prüft außerdem,
    dass der Pin auf `master` des Upstreams liegt (GitHub liefert über `flopp/map.git` auch Commits aus Forks).
    Bei einem von Hand eingetragenen Pin lokal: `git merge-base --is-ancestor <SHA> origin/master`.
 5. Der Tester prüft AC-3 bis AC-6 per HAR gegen das lokal gestartete Image und trägt das Ergebnis
    in den PR ein. Ein neuer externer Host oder eine Lockerung der CSP blockiert den Merge, bis Ralf
-   entschieden hat.
+   entschieden hat. Für die Startposition (0005) müssen außerdem `tests/static.sh` mit zwei
+   Containern (Aufruf im Kopf der Datei) und `tests/browser/start-position.mjs` grün sein. Ein
+   Upstream-Umbau von `restore()` oder `main.ts` kann 0005 still entwerten, obwohl der Patch sauber
+   angewendet wird.
 6. Ralf merged, setzt den Tag (`vX.Y.Z`, MINOR hoch) und merged danach den gitops-PR.
 
 Ohne beide Merges ändert sich die laufende Instanz nicht.
